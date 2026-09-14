@@ -1,61 +1,56 @@
-// Adaptador de armazenamento.
+// Adaptador de armazenamento — conecta direto no Supabase via REST API
+// (PostgREST), reaproveitando o MESMO projeto/banco do site principal
+// (Ministério Avivar do Espírito), na mesma tabela genérica site_data
+// (key/value jsonb). As chaves usadas aqui começam com "biblia:" pra não
+// colidir com as chaves do site principal.
 //
-// - Dentro do Claude (artefato), usa window.storage — dados reais, compartilhados
-//   entre quem abrir o artefato.
-// - Publicado como site estático (Vercel/Netlify/GitHub Pages), NÃO existe
-//   window.storage, então cai para localStorage do navegador.
-//
-// ATENÇÃO — limitação importante do modo localStorage:
-// os dados ficam presos ao navegador de quem está usando o site. Um cadastro feito
-// pelo admin em um computador não aparece para um visitante em outro celular, e os
-// dados somem se o histórico/cache do navegador for limpo. Isso é suficiente para
-// testar conteúdo e visual sozinho, mas NÃO é um banco de dados real compartilhado
-// entre todos os visitantes do site.
-//
-// Para dados de verdade compartilhados (o objetivo final do projeto), troque as
-// duas funções abaixo por chamadas a um backend real — por exemplo Supabase ou
-// Firebase, que têm plano gratuito e funcionam direto do navegador sem precisar
-// manter um servidor rodando.
+// Isto substitui a versão anterior, que só usava localStorage do navegador
+// e por isso nunca chegava a compartilhar dados de verdade entre visitantes
+// (cada admin só via as próprias edições, no próprio navegador).
 
-const hasNativeStorage = typeof window !== "undefined" && !!window.storage;
+const SUPABASE_URL = "https://xnxfzygofnztpumqxqzt.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_TKv2SXrc_3ovC1hGPMdCow_lGP578sv";
 
-function localGet(key) {
-  try {
-    const raw = window.localStorage.getItem(key);
-    return raw ? { key, value: raw, shared: false } : null;
-  } catch (e) {
-    return null;
-  }
-}
+const REST_URL = `${SUPABASE_URL}/rest/v1/site_data`;
 
-function localSet(key, value) {
-  try {
-    window.localStorage.setItem(key, value);
-    return { key, value, shared: false };
-  } catch (e) {
-    return null;
-  }
+function headers(extra = {}) {
+  return {
+    apikey: SUPABASE_ANON_KEY,
+    Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+    "Content-Type": "application/json",
+    ...extra,
+  };
 }
 
 export async function storageGet(key) {
-  if (hasNativeStorage) {
-    try {
-      return await window.storage.get(key, true);
-    } catch (e) {
-      return null;
-    }
+  try {
+    const url = `${REST_URL}?key=eq.${encodeURIComponent(key)}&select=value`;
+    const res = await fetch(url, { headers: headers() });
+    if (!res.ok) return null;
+    const rows = await res.json();
+    if (!rows.length) return null;
+    return { key, value: rows[0].value, shared: true };
+  } catch (e) {
+    console.error("Falha ao ler", key, e);
+    return null;
   }
-  return localGet(key);
 }
 
 export async function storageSet(key, value) {
-  if (hasNativeStorage) {
-    try {
-      return await window.storage.set(key, value, true);
-    } catch (e) {
-      console.error("Falha ao salvar", key, e);
+  try {
+    const url = `${REST_URL}?on_conflict=key`;
+    const res = await fetch(url, {
+      method: "POST",
+      headers: headers({ Prefer: "resolution=merge-duplicates,return=representation" }),
+      body: JSON.stringify([{ key, value, updated_at: new Date().toISOString() }]),
+    });
+    if (!res.ok) {
+      console.error("Falha ao salvar", key, await res.text());
       return null;
     }
+    return { key, value, shared: true };
+  } catch (e) {
+    console.error("Falha ao salvar", key, e);
+    return null;
   }
-  return localSet(key, value);
 }
