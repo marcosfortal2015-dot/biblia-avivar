@@ -2,7 +2,8 @@ import React, { useState, useEffect, useMemo, useRef } from "react";
 import {
   Menu, X, Lock, ShieldCheck, ChevronLeft, ChevronRight, ArrowLeft,
   BookOpen, Search, Image as ImageIcon, Loader2, AlertCircle,
-  Highlighter, Share2, Download, Music, Play, Pause, StickyNote, Trash2, Plus, Volume2, Square
+  Highlighter, Share2, Download, Music, Play, Pause, StickyNote, Trash2, Plus, Volume2, Square,
+  GraduationCap, CalendarDays, HandHeart, ExternalLink,
 } from "lucide-react";
 import { storageGet, storageSet } from "./lib/storage.js";
 import { OLD_TESTAMENT, NEW_TESTAMENT, ALL_BOOKS, findBook } from "./lib/bibleData.js";
@@ -26,6 +27,9 @@ const C = {
 };
 
 const uid = () => Math.random().toString(36).slice(2, 10);
+
+// Foto do hero da Home (nascer do sol com a Bíblia aberta) — arquivo em public/
+const BIBLIA_HERO_IMG = "/2-biblia-hero-amanhecer.jpg";
 
 // ---- Configuração da API bíblica ----------------------------------
 const BIBLE_API_BASE = "https://www.abibliadigital.com.br/api";
@@ -98,6 +102,34 @@ function loadMusicPrefLocal() {
 function saveMusicPrefLocal(pref) {
   try {
     window.localStorage.setItem("biblia:musicaPref", JSON.stringify(pref));
+  } catch (e) {}
+}
+
+// "Continue sua leitura" (Home) — guarda o último capítulo aberto, só neste
+// aparelho (mesmo padrão de marcas/anotações/música acima). Atualizado toda
+// vez que um capítulo carrega com sucesso, em ReadTab e no modo livro.
+function loadUltimaLeituraLocal() {
+  try {
+    const raw = window.localStorage.getItem("biblia:ultimaLeitura");
+    return raw ? JSON.parse(raw) : null;
+  } catch (e) {
+    return null;
+  }
+}
+function saveUltimaLeituraLocal(book, chapter, verses) {
+  try {
+    window.localStorage.setItem(
+      "biblia:ultimaLeitura",
+      JSON.stringify({
+        abbr: book.abbr,
+        nome: book.name,
+        totalCapitulos: book.chapters,
+        capitulo: chapter,
+        totalVersiculos: (verses || []).length,
+        primeiraLinha: (verses && verses[0] && verses[0].text) || "",
+        ts: Date.now(),
+      })
+    );
   } catch (e) {}
 }
 
@@ -300,6 +332,35 @@ async function fetchChapter(bookAbbr, chapter) {
 }
 
 /* ---------------------------------------------------------------- */
+/* "Palavra do dia" (Home) — sorteia uma referência conhecida por dia do   */
+/* ano e busca o texto de verdade pela mesma fetchChapter usada na leitura */
+/* (arquivo estático da Bíblia, com fallback pra API) — nunca texto digitado */
+/* à mão, sempre o versículo real. */
+/* ---------------------------------------------------------------- */
+const PALAVRA_DO_DIA_REFS = [
+  { abbr: "sl", chapter: 23, verse: 1, label: "Salmos 23:1" },
+  { abbr: "jo", chapter: 3, verse: 16, label: "João 3:16" },
+  { abbr: "fp", chapter: 4, verse: 13, label: "Filipenses 4:13" },
+  { abbr: "js", chapter: 1, verse: 9, label: "Josué 1:9" },
+  { abbr: "is", chapter: 41, verse: 10, label: "Isaías 41:10" },
+  { abbr: "mt", chapter: 11, verse: 28, label: "Mateus 11:28" },
+  { abbr: "pv", chapter: 3, verse: 5, label: "Provérbios 3:5" },
+  { abbr: "rm", chapter: 8, verse: 28, label: "Romanos 8:28" },
+  { abbr: "sl", chapter: 46, verse: 1, label: "Salmos 46:1" },
+  { abbr: "hb", chapter: 4, verse: 12, label: "Hebreus 4:12" },
+];
+function refPalavraDoDia() {
+  const dia = Math.floor(Date.now() / 86400000); // dias desde 1970 — muda uma vez por dia
+  return PALAVRA_DO_DIA_REFS[dia % PALAVRA_DO_DIA_REFS.length];
+}
+async function fetchPalavraDoDia() {
+  const ref = refPalavraDoDia();
+  const data = await fetchChapter(ref.abbr, ref.chapter);
+  const v = (data.verses || []).find((x) => x.number === ref.verse);
+  return { texto: v ? v.text : "", label: ref.label, abbr: ref.abbr, chapter: ref.chapter };
+}
+
+/* ---------------------------------------------------------------- */
 /* UI básica                                                          */
 /* ---------------------------------------------------------------- */
 function Btn({ children, onClick, variant = "primary", color = C.gold, className = "", ...rest }) {
@@ -428,10 +489,11 @@ function NavBar({ onHome, onAnotacoes, adminMode, onAdminClick }) {
           <img src="/logo-icone.png" alt="Bíblia Avivar" className="h-10 w-auto" />
           <span className="font-display font-semibold text-lg" style={{ color: C.goldBright, fontFamily: "'Playfair Display', serif" }}>Bíblia Avivar</span>
         </button>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
           <button onClick={onAnotacoes} className="p-2 rounded-full focus:outline-none focus:ring-2 flex items-center gap-1.5 text-xs font-medium" style={{ color: C.gold }} title="Minhas anotações">
             <StickyNote size={18} /> <span className="hidden sm:inline">Anotações</span>
           </button>
+          <span className="w-px h-5" style={{ background: C.gold + "33" }} />
           <button onClick={onAdminClick} className="p-2 rounded-full focus:outline-none focus:ring-2" title={adminMode ? "Sair do modo admin" : "Entrar como admin"} style={{ background: adminMode ? C.gold : "transparent", color: adminMode ? C.black : C.gold }}>
             {adminMode ? <ShieldCheck size={18} /> : <Lock size={18} />}
           </button>
@@ -463,43 +525,216 @@ function AdminGateModal({ onClose, onSuccess }) {
 }
 
 /* ---------------------------------------------------------------- */
-/* Home — lista de livros                                             */
+/* Home — dashboard de entrada (hero, continuar leitura, palavra do   */
+/* dia, acessos rápidos, livros em destaque) + lista completa de      */
+/* livros logo abaixo (busca + Antigo/Novo Testamento, como antes).   */
 /* ---------------------------------------------------------------- */
-function Home({ onOpenBook }) {
+const QUICK_ACCESS_PILLS = OLD_TESTAMENT.slice(0, 8); // Gênesis...Rute
+
+function ContinueLeituraCard({ ultimaLeitura, onOpenBook }) {
+  if (!ultimaLeitura) {
+    return (
+      <a
+        href="#"
+        onClick={(e) => { e.preventDefault(); onOpenBook(findBook("gn"), 1, "ler"); }}
+        className="rounded-2xl border p-6 sm:p-7 flex flex-col justify-between focus:outline-none focus:ring-2 hover:brightness-[1.02] transition"
+        style={{ background: C.cream, borderColor: C.line, flex: "0 0 63%" }}
+      >
+        <div>
+          <Eyebrow color={C.goldDeep}>Comece por aqui</Eyebrow>
+          <h3 className="font-display font-semibold text-xl" style={{ color: C.ink, fontFamily: "'Playfair Display', serif" }}>Gênesis 1</h3>
+          <p className="text-sm mt-1.5" style={{ color: C.stone }}>Você ainda não começou a ler neste aparelho — que tal começar pelo princípio?</p>
+        </div>
+        <span className="inline-flex items-center gap-1.5 mt-5 text-sm font-semibold rounded-full px-4 py-2 self-start" style={{ background: C.gold, color: "#fff" }}>
+          Começar a ler <ChevronRight size={15} />
+        </span>
+      </a>
+    );
+  }
+  const progresso = Math.round((ultimaLeitura.capitulo / ultimaLeitura.totalCapitulos) * 100);
+  return (
+    <a
+      href="#"
+      onClick={(e) => { e.preventDefault(); onOpenBook(findBook(ultimaLeitura.abbr), ultimaLeitura.capitulo, "ler"); }}
+      className="rounded-2xl border p-6 sm:p-7 flex flex-col justify-between focus:outline-none focus:ring-2 hover:brightness-[1.02] transition"
+      style={{ background: C.cream, borderColor: C.line, flex: "0 0 63%" }}
+    >
+      <div>
+        <Eyebrow color={C.goldDeep}>Continue sua leitura</Eyebrow>
+        <h3 className="font-display font-semibold text-xl" style={{ color: C.ink, fontFamily: "'Playfair Display', serif" }}>{ultimaLeitura.nome} {ultimaLeitura.capitulo}</h3>
+        {ultimaLeitura.primeiraLinha && (
+          <p className="text-sm mt-1.5 line-clamp-2" style={{ color: C.stone }}>"{ultimaLeitura.primeiraLinha}"</p>
+        )}
+      </div>
+      <div className="mt-5">
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-xs" style={{ color: C.stone }}>{ultimaLeitura.totalVersiculos ? `${ultimaLeitura.totalVersiculos} versículos` : `Capítulo ${ultimaLeitura.capitulo} de ${ultimaLeitura.totalCapitulos}`}</span>
+          <span className="inline-flex items-center gap-1.5 text-sm font-semibold rounded-full px-4 py-2" style={{ background: C.gold, color: "#fff" }}>
+            Continuar <ChevronRight size={15} />
+          </span>
+        </div>
+        <div className="h-1.5 rounded-full overflow-hidden" style={{ background: C.line }}>
+          <div className="h-full rounded-full" style={{ width: `${progresso}%`, background: C.gold }} />
+        </div>
+      </div>
+    </a>
+  );
+}
+
+function PalavraDoDiaCard({ onOpenBook }) {
+  const [pdd, setPdd] = useState(null);
+  const [state, setState] = useState("loading");
+  useEffect(() => {
+    let cancelled = false;
+    fetchPalavraDoDia()
+      .then((r) => { if (!cancelled) { setPdd(r); setState(r.texto ? "ok" : "error"); } })
+      .catch(() => { if (!cancelled) setState("error"); });
+    return () => { cancelled = true; };
+  }, []);
+  return (
+    <div className="rounded-2xl border p-6 sm:p-7 flex flex-col justify-between" style={{ flex: 1, background: "linear-gradient(160deg,#FBF1DC 0%,#F6E7C8 100%)", borderColor: C.gold + "48" }}>
+      <div>
+        <Eyebrow color={C.goldDeep}>Palavra do dia</Eyebrow>
+        {state === "loading" && <p className="text-sm italic mt-2" style={{ color: C.stone }}>Carregando...</p>}
+        {state === "error" && <p className="text-sm italic mt-2" style={{ color: C.stone }}>Não foi possível carregar agora.</p>}
+        {state === "ok" && (
+          <>
+            <p className="font-display text-lg italic mt-2 leading-snug" style={{ color: C.ink, fontFamily: "'Playfair Display', serif" }}>"{pdd.texto}"</p>
+            <p className="text-xs mt-2 font-semibold" style={{ color: C.stone }}>{pdd.label}</p>
+          </>
+        )}
+      </div>
+      {state === "ok" && (
+        <button onClick={() => onOpenBook(findBook(pdd.abbr), pdd.chapter, "ler")} className="text-sm font-bold mt-4 self-start" style={{ color: C.goldDeep }}>
+          Ler agora →
+        </button>
+      )}
+    </div>
+  );
+}
+
+function AcessoRapidoCard({ icon: Icon, tone, titulo, desc, onClick, disabled, external }) {
+  const iconBg = tone === "violet" ? "#7B5CB214" : C.gold + "22";
+  const iconColor = tone === "violet" ? "#4B3B77" : C.goldDeep;
+  return (
+    <button
+      onClick={disabled ? undefined : onClick}
+      className="text-left rounded-xl border p-4 flex flex-col gap-2.5 focus:outline-none focus:ring-2 transition hover:-translate-y-0.5"
+      style={{ background: C.cream, borderColor: C.line, opacity: disabled ? 0.55 : 1, cursor: disabled ? "default" : "pointer" }}
+    >
+      <div className="w-9 h-9 rounded-[10px] flex items-center justify-center" style={{ background: iconBg }}>
+        <Icon size={17} color={iconColor} />
+      </div>
+      <p className="font-semibold text-sm flex items-center gap-1.5" style={{ color: C.ink }}>
+        {titulo}
+        {external && <ExternalLink size={11} color={C.stone} />}
+        {disabled && <span className="text-[9px] font-mono uppercase tracking-wide rounded px-1.5 py-0.5" style={{ background: C.line, color: C.stone }}>em breve</span>}
+      </p>
+      <p className="text-xs leading-snug" style={{ color: C.stone }}>{desc}</p>
+    </button>
+  );
+}
+
+function Home({ onOpenBook, onAnotacoes }) {
   const [testament, setTestament] = useState("at");
   const [query, setQuery] = useState("");
+  const [ultimaLeitura] = useState(loadUltimaLeituraLocal);
   const list = (testament === "at" ? OLD_TESTAMENT : NEW_TESTAMENT).filter((b) =>
     b.name.toLowerCase().includes(query.toLowerCase())
   );
+  const irParaLivros = () => {
+    const el = document.getElementById("livros");
+    if (el) el.scrollIntoView({ behavior: "smooth" });
+  };
+
   return (
-    <div className="max-w-5xl mx-auto px-4 sm:px-6 py-10">
-      <Eyebrow>Ministério Avivar do Espírito</Eyebrow>
-      <h1 className="font-display text-3xl sm:text-4xl font-bold" style={{ color: C.ink, fontFamily: "'Playfair Display', serif" }}>Bíblia Sagrada e Estudos</h1>
-      <p className="text-sm mt-2" style={{ color: C.stone }}>Leia a Palavra, explore o histórico e o estudo de cada livro, capítulo por capítulo.</p>
-
-      <div className="flex items-center gap-2 mt-6">
-        <Search size={16} color={C.stone} />
-        <input placeholder="Buscar livro..." value={query} onChange={(e) => setQuery(e.target.value)} className={`${inputCls} max-w-xs`} />
+    <div>
+      {/* HERO */}
+      <div className="max-w-5xl mx-auto px-4 sm:px-6 pt-6">
+        <div className="rounded-2xl overflow-hidden flex flex-col sm:flex-row shadow-lg" style={{ minHeight: 280 }}>
+          <div className="sm:w-[44%] p-7 sm:p-9 flex flex-col justify-center gap-3" style={{ background: `linear-gradient(165deg, ${C.black} 0%, #241A38 65%, ${C.black} 100%)` }}>
+            <span className="text-xs font-mono uppercase tracking-[0.2em]" style={{ color: C.gold }}>Olá!</span>
+            <h1 className="font-display text-3xl sm:text-4xl font-bold leading-tight" style={{ color: C.parchment, fontFamily: "'Playfair Display', serif" }}>Bem-vindo à<br />Bíblia Avivar</h1>
+            <div className="w-12 h-0.5" style={{ background: C.gold }} />
+            <p className="text-sm" style={{ color: "#C9C2D8" }}>Leia. Entenda. Viva a Palavra.</p>
+          </div>
+          <div className="sm:w-[56%] min-h-[200px] relative">
+            <img src={BIBLIA_HERO_IMG} alt="Bíblia aberta sobre as montanhas ao amanhecer" className="absolute inset-0 w-full h-full object-cover" />
+          </div>
+        </div>
       </div>
 
-      <div className="flex gap-2 mt-4">
-        {[
-          ["at", "Antigo Testamento"],
-          ["nt", "Novo Testamento"],
-        ].map(([k, label]) => (
-          <button key={k} onClick={() => setTestament(k)} className="px-4 py-2 rounded-md text-sm font-medium" style={{ background: testament === k ? C.gold : "transparent", color: testament === k ? "#fff" : C.ink, border: `1px solid ${C.gold}55` }}>
-            {label}
-          </button>
-        ))}
+      {/* CONTINUE / PALAVRA DO DIA */}
+      <div className="max-w-5xl mx-auto px-4 sm:px-6 mt-4 flex flex-col sm:flex-row gap-4">
+        <ContinueLeituraCard ultimaLeitura={ultimaLeitura} onOpenBook={onOpenBook} />
+        <PalavraDoDiaCard onOpenBook={onOpenBook} />
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 mt-6">
-        {list.map((b) => (
-          <button key={b.abbr} onClick={() => onOpenBook(b)} className="text-left p-4 rounded-lg border transition hover:-translate-y-0.5 focus:outline-none focus:ring-2" style={{ borderColor: C.line, background: C.cream }}>
-            <p className="font-display font-semibold text-sm" style={{ color: C.ink, fontFamily: "'Playfair Display', serif" }}>{b.name}</p>
-            <p className="text-xs mt-1 font-mono" style={{ color: C.stone }}>{b.chapters} capítulos</p>
+      {/* ACESSOS RÁPIDOS */}
+      <div className="max-w-5xl mx-auto px-4 sm:px-6 mt-6 grid grid-cols-2 sm:grid-cols-5 gap-3">
+        <AcessoRapidoCard icon={BookOpen} titulo="Explore a Bíblia" desc="Todos os livros, capítulos e versículos." onClick={irParaLivros} />
+        <AcessoRapidoCard icon={GraduationCap} tone="violet" titulo="Estudos Avivar" desc="Contexto, ensinamentos e aplicações." onClick={irParaLivros} />
+        <AcessoRapidoCard icon={CalendarDays} titulo="Planos de Leitura" desc="Leia a Bíblia em diferentes planos." disabled />
+        <AcessoRapidoCard icon={HandHeart} tone="violet" titulo="Oração" desc="Peça oração no site do Ministério." external onClick={() => window.open("https://avivardoespirito.com.br", "_blank", "noopener,noreferrer")} />
+        <AcessoRapidoCard icon={StickyNote} titulo="Minha Bíblia" desc="Versículos, anotações e favoritos." onClick={onAnotacoes} />
+      </div>
+
+      {/* LIVROS EM DESTAQUE */}
+      <div className="max-w-5xl mx-auto px-4 sm:px-6 mt-7">
+        <h4 className="text-xs font-mono uppercase tracking-[0.15em] font-semibold mb-3" style={{ color: C.ink }}>Livros da Bíblia</h4>
+        <div className="flex flex-wrap gap-2">
+          {QUICK_ACCESS_PILLS.map((b) => (
+            <button key={b.abbr} onClick={() => onOpenBook(b)} className="px-4 py-2 rounded-full border text-sm font-medium focus:outline-none focus:ring-2" style={{ borderColor: C.line, background: C.cream, color: C.ink }}>
+              {b.name}
+            </button>
+          ))}
+          <button onClick={irParaLivros} className="px-4 py-2 rounded-full border text-sm font-bold focus:outline-none focus:ring-2" style={{ borderColor: C.gold, background: C.cream, color: C.goldDeep }}>
+            Ver todos →
           </button>
-        ))}
+        </div>
+      </div>
+
+      {/* LISTA COMPLETA — busca + Antigo/Novo Testamento (como sempre foi) */}
+      <div id="livros" className="max-w-5xl mx-auto px-4 sm:px-6 py-10 mt-4 scroll-mt-20">
+        <Eyebrow>Ministério Avivar do Espírito</Eyebrow>
+        <h2 className="font-display text-2xl sm:text-3xl font-bold" style={{ color: C.ink, fontFamily: "'Playfair Display', serif" }}>Bíblia Sagrada e Estudos</h2>
+        <p className="text-sm mt-2" style={{ color: C.stone }}>Leia a Palavra, explore o histórico e o estudo de cada livro, capítulo por capítulo.</p>
+
+        <div className="flex items-center gap-2 mt-6">
+          <Search size={16} color={C.stone} />
+          <input placeholder="Buscar livro..." value={query} onChange={(e) => setQuery(e.target.value)} className={`${inputCls} max-w-xs`} />
+        </div>
+
+        <div className="flex gap-2 mt-4">
+          {[
+            ["at", "Antigo Testamento"],
+            ["nt", "Novo Testamento"],
+          ].map(([k, label]) => (
+            <button key={k} onClick={() => setTestament(k)} className="px-4 py-2 rounded-md text-sm font-medium" style={{ background: testament === k ? C.gold : "transparent", color: testament === k ? "#fff" : C.ink, border: `1px solid ${C.gold}55` }}>
+              {label}
+            </button>
+          ))}
+        </div>
+
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 mt-6">
+          {list.map((b) => (
+            <button key={b.abbr} onClick={() => onOpenBook(b)} className="text-left p-4 rounded-lg border transition hover:-translate-y-0.5 focus:outline-none focus:ring-2" style={{ borderColor: C.line, background: C.cream }}>
+              <p className="font-display font-semibold text-sm" style={{ color: C.ink, fontFamily: "'Playfair Display', serif" }}>{b.name}</p>
+              <p className="text-xs mt-1 font-mono" style={{ color: C.stone }}>{b.chapters} capítulos</p>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* RODAPÉ DEVOCIONAL */}
+      <div className="max-w-5xl mx-auto px-4 sm:px-6 pb-12 text-center">
+        <div className="flex items-center justify-center gap-2.5 mb-3">
+          <span className="w-8 h-px" style={{ background: C.gold + "80" }} />
+          <span className="w-1.5 h-1.5 rotate-45" style={{ background: C.gold }} />
+          <span className="w-8 h-px" style={{ background: C.gold + "80" }} />
+        </div>
+        <p className="font-display text-base italic" style={{ color: C.ink, fontFamily: "'Playfair Display', serif" }}>"A Palavra de Deus é viva e eficaz."</p>
+        <p className="text-xs mt-1 tracking-wide" style={{ color: C.stone }}>HEBREUS 4:12</p>
       </div>
     </div>
   );
@@ -648,7 +883,7 @@ function DynamicForm({ fields, onSubmit, submitLabel = "Salvar", initial = {} })
   );
 }
 
-function ReadTab({ book, chapter, setChapter }) {
+function ReadTab({ book, chapter, setChapter, onAbrirEstudo }) {
   const [state, setState] = useState("loading");
   const [verses, setVerses] = useState([]);
   const [marks, setMarks] = useState({});
@@ -657,6 +892,7 @@ function ReadTab({ book, chapter, setChapter }) {
   const [speakingVerse, setSpeakingVerse] = useState(null);
   const [noteFor, setNoteFor] = useState(null); // { verseNumber, trecho, color } | null
   const [noteText, setNoteText] = useState("");
+  const [speed, setSpeed] = useState(1);
 
   useEffect(() => {
     let cancelled = false;
@@ -670,6 +906,7 @@ function ReadTab({ book, chapter, setChapter }) {
         if (cancelled) return;
         setVerses(data.verses || []);
         setState("ok");
+        saveUltimaLeituraLocal(book, chapter, data.verses || []);
       })
       .catch(() => {
         if (!cancelled) setState("error");
@@ -703,7 +940,7 @@ function ReadTab({ book, chapter, setChapter }) {
       const utter = new SpeechSynthesisUtterance(`${v.number}. ${v.text}`);
       utter.lang = "pt-BR";
       if (ptVoice) utter.voice = ptVoice;
-      utter.rate = 0.95;
+      utter.rate = speed;
       utter.onend = () => {
         idx += 1;
         speakNext();
@@ -812,15 +1049,26 @@ function ReadTab({ book, chapter, setChapter }) {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-1">
         <button disabled={chapter <= 1} onClick={() => setChapter((c) => c - 1)} className="p-2 rounded-md disabled:opacity-30 focus:outline-none focus:ring-2" style={{ color: C.goldDeep }}>
           <ChevronLeft size={18} />
         </button>
-        <span className="text-sm font-mono" style={{ color: C.stone }}>Capítulo {chapter} de {book.chapters}</span>
+        <div className="text-center">
+          <p className="font-display text-xl font-bold" style={{ color: C.ink, fontFamily: "'Playfair Display', serif" }}>{book.name} {chapter}</p>
+          <span className="text-xs font-mono" style={{ color: C.stone }}>{chapter} de {book.chapters} capítulos</span>
+        </div>
         <button disabled={chapter >= book.chapters} onClick={() => setChapter((c) => c + 1)} className="p-2 rounded-md disabled:opacity-30 focus:outline-none focus:ring-2" style={{ color: C.goldDeep }}>
           <ChevronRight size={18} />
         </button>
       </div>
+
+      {onAbrirEstudo && (
+        <div className="flex justify-center mb-4">
+          <button onClick={onAbrirEstudo} className="inline-flex items-center gap-1.5 text-xs font-semibold rounded-full px-3 py-1.5" style={{ background: "#7B5CB214", color: "#4B3B77", border: "1px solid #7B5CB240" }}>
+            <GraduationCap size={13} /> Estudo Avivar
+          </button>
+        </div>
+      )}
 
       <div className="flex items-center gap-2 flex-wrap mb-2 p-2.5 rounded-lg" style={{ background: C.parchment }}>
         <Highlighter size={15} color={C.stone} />
@@ -838,6 +1086,16 @@ function ReadTab({ book, chapter, setChapter }) {
         <button onClick={toggleReading} className="text-xs flex items-center gap-1 px-2 py-1 rounded" style={{ color: speaking ? "#B03428" : C.goldDeep }}>
           {speaking ? <><Square size={12} /> Parar</> : <><Volume2 size={13} /> Ouvir</>}
         </button>
+        {[0.75, 1, 1.25, 1.5].map((s) => (
+          <button
+            key={s}
+            onClick={() => setSpeed(s)}
+            className="text-[10px] font-semibold rounded-full px-2 py-1"
+            style={{ background: speed === s ? C.gold : "transparent", color: speed === s ? "#fff" : C.stone, border: `1px solid ${C.gold}55` }}
+          >
+            {String(s).replace(".", ",")}x
+          </button>
+        ))}
         <button onClick={exportChapterPDF} className="text-xs flex items-center gap-1 px-2 py-1 rounded" style={{ color: C.goldDeep }}>
           <Download size={13} /> PDF
         </button>
@@ -859,24 +1117,27 @@ function ReadTab({ book, chapter, setChapter }) {
       )}
 
       {state === "ok" && (
-        <div className="space-y-1 leading-relaxed" style={{ color: C.ink }}>
+        <div className="space-y-2.5" style={{ color: "#241F30" }}>
           {verses.map((v) => (
             <div key={v.number} className="flex items-start gap-2 group">
               <p
                 onMouseUp={() => createMarkFromSelection(v)}
-                className="text-[15px] flex-1 rounded px-1 -mx-1"
+                className="flex-1 rounded px-1 -mx-1"
                 style={{
+                  fontFamily: "'Playfair Display', serif",
+                  fontSize: 17,
+                  lineHeight: 1.85,
                   background: speakingVerse === v.number ? C.gold + "33" : "transparent",
                   boxShadow: speakingVerse === v.number ? `inset 2px 0 0 ${C.gold}` : "none",
                   cursor: activeColor ? "text" : "default",
                 }}
               >
-                <span className="text-xs font-mono align-super mr-1" style={{ color: C.goldDeep }}>{v.number}</span>
+                <span className="text-xs font-mono align-super mr-1" style={{ color: "#B79A55" }}>{v.number}</span>
                 <VerseText text={v.text} verseMarks={marks[v.number]} onRemoveMark={(markId) => removeMark(v.number, markId)} />
               </p>
-              <div className="flex flex-col gap-1 opacity-40 group-hover:opacity-100 transition shrink-0">
+              <div className="flex flex-col gap-1.5 opacity-60 group-hover:opacity-100 transition shrink-0 pt-1">
                 <button onClick={() => shareVerse(v)} className="p-1" title="Compartilhar versículo">
-                  <Share2 size={13} color={C.stone} />
+                  <Share2 size={14} color={C.goldDeep} />
                 </button>
                 {(marks[v.number] || []).length > 0 && (
                   <button
@@ -887,7 +1148,7 @@ function ReadTab({ book, chapter, setChapter }) {
                     className="p-1"
                     title="Anotar sobre o trecho marcado"
                   >
-                    <StickyNote size={13} color={C.stone} />
+                    <StickyNote size={14} color={C.goldDeep} />
                   </button>
                 )}
               </div>
@@ -1013,6 +1274,7 @@ function BookReaderView({ book, onExit }) {
         if (cancelled) return;
         setVerses(data.verses || []);
         setState("ok");
+        saveUltimaLeituraLocal(book, chapterNum, data.verses || []);
       })
       .catch(() => {
         if (!cancelled) setState("error");
@@ -1221,9 +1483,9 @@ function BookReaderView({ book, onExit }) {
   );
 }
 
-function BookView({ book, onBack, studies, saveStudy, adminMode }) {
-  const [tab, setTab] = useState("historia");
-  const [chapter, setChapter] = useState(1);
+function BookView({ book, onBack, studies, saveStudy, adminMode, initialChapter, initialTab }) {
+  const [tab, setTab] = useState(initialTab || "historia");
+  const [chapter, setChapter] = useState(initialChapter || 1);
   const [bookMode, setBookMode] = useState(false);
   const study = studies[book.abbr];
 
@@ -1255,7 +1517,7 @@ function BookView({ book, onBack, studies, saveStudy, adminMode }) {
       </div>
 
       {tab === "historia" && <HistoryTab book={book} />}
-      {tab === "ler" && <ReadTab book={book} chapter={chapter} setChapter={setChapter} />}
+      {tab === "ler" && <ReadTab book={book} chapter={chapter} setChapter={setChapter} onAbrirEstudo={() => setTab("estudo")} />}
       {tab === "estudo" && <StudyTab book={book} study={study} saveStudy={saveStudy} adminMode={adminMode} />}
     </div>
   );
@@ -1308,6 +1570,8 @@ function MusicaAdmin({ config, save }) {
 export default function App() {
   const [page, setPage] = useState("home");
   const [activeBook, setActiveBook] = useState(null);
+  const [initialChapter, setInitialChapter] = useState(1);
+  const [initialTab, setInitialTab] = useState("historia");
   const [loading, setLoading] = useState(true);
   const [adminMode, setAdminMode] = useState(false);
   const [gateOpen, setGateOpen] = useState(false);
@@ -1360,14 +1624,17 @@ export default function App() {
 
       {page === "home" && (
         <Home
-          onOpenBook={(b) => {
+          onOpenBook={(b, chapter, tab) => {
             setActiveBook(b);
+            setInitialChapter(chapter || 1);
+            setInitialTab(tab || "historia");
             setPage("book");
           }}
+          onAnotacoes={() => setPage("anotacoes")}
         />
       )}
       {page === "book" && activeBook && (
-        <BookView book={activeBook} onBack={() => setPage("home")} studies={studies} saveStudy={saveStudy} adminMode={adminMode} />
+        <BookView book={activeBook} onBack={() => setPage("home")} studies={studies} saveStudy={saveStudy} adminMode={adminMode} initialChapter={initialChapter} initialTab={initialTab} />
       )}
       {page === "anotacoes" && <AnotacoesPage onBack={() => setPage("home")} />}
 
