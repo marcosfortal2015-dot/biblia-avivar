@@ -4,6 +4,7 @@ import {
   BookOpen, Search, Image as ImageIcon, Loader2, AlertCircle,
   Highlighter, Share2, Download, Music, Play, Pause, StickyNote, Trash2, Plus, Volume2, Square,
   GraduationCap, CalendarDays, HandHeart, ExternalLink,
+  Sparkles, WifiOff, CheckCircle2, VolumeX, Link2, Smartphone, MessageCircle,
 } from "lucide-react";
 import { storageGet, storageSet } from "./lib/storage.js";
 import { OLD_TESTAMENT, NEW_TESTAMENT, ALL_BOOKS, findBook } from "./lib/bibleData.js";
@@ -218,67 +219,888 @@ function drawImageCover(ctx, img, x, y, w, h) {
   ctx.drawImage(img, sx, sy, sw, sh, x, y, w, h);
 }
 
+/* ---------------------------------------------------------------- */
+/* Cartão do versículo — arte PEQUENA no topo e fundo em COR. Se o   */
+/* texto for grande, o cartão cresce e a cor preenche o espaço.       */
+/* ---------------------------------------------------------------- */
+const CARD_PALETTES = [
+  ["#1B1035", "#3A1B63"], // violeta
+  ["#0B2545", "#13497A"], // azul
+  ["#3B0D1E", "#7A1F3D"], // vinho
+  ["#0F3B2E", "#1E6B52"], // verde
+  ["#2B1B0B", "#7A5412"], // âmbar escuro
+  ["#10282F", "#1B6A78"], // petróleo
+];
+const hashStr = (s) => String(s || "").split("").reduce((a, ch) => (a * 31 + ch.charCodeAt(0)) >>> 0, 7);
+
+function roundRectPath(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
 function generateVerseCard(verseText, reference) {
   return new Promise((resolve, reject) => {
-    const size = 1080;
+    const W = 1080;
+    const MARGIN = 90;
+    const IMG_H = 300; // a arte agora é só uma faixa no topo (antes ocupava o cartão inteiro)
+    const palette = CARD_PALETTES[hashStr(reference) % CARD_PALETTES.length];
+    const phrase = CARD_OPENING_PHRASES[Math.floor(Math.random() * CARD_OPENING_PHRASES.length)];
+
+    // 1) mede o texto numa tela provisória para saber a altura que o cartão precisa ter
+    const meas = document.createElement("canvas").getContext("2d");
+    const layout = (verseSize) => {
+      const verseLH = Math.round(verseSize * 1.32);
+      meas.font = "italic 32px Georgia";
+      const phraseLines = wrapCanvasLines(meas, phrase, 780);
+      meas.font = `${verseSize}px Georgia`;
+      const verseLines = wrapCanvasLines(meas, `"${verseText}"`, W - MARGIN * 2 - 20);
+      const textH = phraseLines.length * 44 + 36 + verseLines.length * verseLH + 30 + 40;
+      return { verseSize, verseLH, phraseLines, verseLines, textH };
+    };
+    let L = layout(40);
+    for (const s of [36, 32, 28, 26]) {
+      if (MARGIN + IMG_H + 70 + L.textH + 130 <= 1920) break;
+      L = layout(s);
+    }
+    const H = Math.min(1920, Math.max(1080, MARGIN + IMG_H + 70 + L.textH + 130));
+
     const canvas = document.createElement("canvas");
-    canvas.width = size;
-    canvas.height = size;
+    canvas.width = W;
+    canvas.height = H;
     const ctx = canvas.getContext("2d");
+
     const bgImg = new Image();
     bgImg.crossOrigin = "anonymous";
-    bgImg.onload = () => {
-      drawImageCover(ctx, bgImg, 0, 0, size, size);
-      // Escurece o meio/baixo pra o texto ficar legível em qualquer fundo (claro ou escuro)
-      const grad = ctx.createLinearGradient(0, size * 0.28, 0, size * 0.92);
-      grad.addColorStop(0, "rgba(0,0,0,0)");
-      grad.addColorStop(0.45, "rgba(0,0,0,0.5)");
-      grad.addColorStop(1, "rgba(0,0,0,0.72)");
-      ctx.fillStyle = grad;
-      ctx.fillRect(0, 0, size, size);
+    const finish = (img) => {
+      // 2) fundo em cor (gradiente) preenchendo tudo
+      const g = ctx.createLinearGradient(0, 0, 0, H);
+      g.addColorStop(0, palette[1]);
+      g.addColorStop(1, palette[0]);
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, W, H);
+      const glow = ctx.createRadialGradient(W / 2, MARGIN + IMG_H, 40, W / 2, MARGIN + IMG_H, W * 0.8);
+      glow.addColorStop(0, "rgba(233,199,101,0.20)");
+      glow.addColorStop(1, "rgba(233,199,101,0)");
+      ctx.fillStyle = glow;
+      ctx.fillRect(0, 0, W, H);
+
+      // 3) moldura fina dourada
+      ctx.strokeStyle = "rgba(203,161,53,0.55)";
+      ctx.lineWidth = 3;
+      roundRectPath(ctx, 28, 28, W - 56, H - 56, 26);
+      ctx.stroke();
+
+      // 4) arte pequena, no topo, com cantos arredondados
+      if (img) {
+        ctx.save();
+        roundRectPath(ctx, MARGIN, MARGIN, W - MARGIN * 2, IMG_H, 22);
+        ctx.clip();
+        drawImageCover(ctx, img, MARGIN, MARGIN, W - MARGIN * 2, IMG_H);
+        ctx.restore();
+        ctx.strokeStyle = "#CBA135";
+        ctx.lineWidth = 3;
+        roundRectPath(ctx, MARGIN, MARGIN, W - MARGIN * 2, IMG_H, 22);
+        ctx.stroke();
+      }
+
+      // 5) texto centralizado no espaço que sobra abaixo da arte
+      const areaTop = MARGIN + IMG_H + 40;
+      const areaBottom = H - 110;
+      let curY = areaTop + Math.max(0, (areaBottom - areaTop - L.textH) / 2) + 40;
       ctx.textAlign = "center";
-
-      const phrase = CARD_OPENING_PHRASES[Math.floor(Math.random() * CARD_OPENING_PHRASES.length)];
-
-      ctx.font = "italic 32px Georgia";
-      const phraseLines = wrapCanvasLines(ctx, phrase, 760);
-
-      ctx.font = "38px Georgia";
-      const verseLines = wrapCanvasLines(ctx, `"${verseText}"`, 860);
-
-      const phraseLH = 44, verseLH = 50, gap1 = 34, gap2 = 26, refLH = 0;
-      const totalHeight = phraseLines.length * phraseLH + gap1 + verseLines.length * verseLH + gap2 + 30;
-      let curY = size / 2 - totalHeight / 2 + 90;
-
       ctx.font = "italic 32px Georgia";
       ctx.fillStyle = "#E9C765";
-      phraseLines.forEach((l) => {
-        ctx.fillText(l, size / 2, curY);
-        curY += phraseLH;
+      L.phraseLines.forEach((l) => {
+        ctx.fillText(l, W / 2, curY);
+        curY += 44;
       });
-
-      curY += gap1;
-      ctx.font = "38px Georgia";
+      curY += 36;
+      ctx.font = `${L.verseSize}px Georgia`;
       ctx.fillStyle = "#FBF6ED";
-      verseLines.forEach((l) => {
-        ctx.fillText(l, size / 2, curY);
-        curY += verseLH;
+      L.verseLines.forEach((l) => {
+        ctx.fillText(l, W / 2, curY);
+        curY += L.verseLH;
       });
-
-      curY += gap2;
+      curY += 30;
       ctx.font = "bold 30px Georgia";
-      ctx.fillStyle = "#CBA135";
-      ctx.fillText(reference, size / 2, curY);
+      ctx.fillStyle = "#E9C765";
+      ctx.fillText(reference, W / 2, curY);
 
       ctx.font = "20px Georgia";
-      ctx.fillStyle = "#C9B98A";
-      ctx.fillText(CARD_FOOTER, size / 2, size - 70);
+      ctx.fillStyle = "#D9CBA0";
+      ctx.fillText(CARD_FOOTER, W / 2, H - 62);
 
       canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error("Falha ao gerar imagem"))), "image/png");
     };
-    bgImg.onerror = () => reject(new Error("Falha ao carregar fundo do cartão"));
+    bgImg.onload = () => finish(bgImg);
+    bgImg.onerror = () => finish(null); // sem a arte, o cartão sai só com o fundo em cor
     bgImg.src = CARD_BACKGROUNDS[Math.floor(Math.random() * CARD_BACKGROUNDS.length)];
   });
+}
+
+/* ---------------------------------------------------------------- */
+/* Link de mensagem — quem recebe abre uma tela com efeito e música   */
+/* (harpa sintetizada no próprio aparelho, sem arquivo de áudio).     */
+/* ---------------------------------------------------------------- */
+const b64enc = (s) => btoa(unescape(encodeURIComponent(s))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+const b64dec = (s) => decodeURIComponent(escape(atob(s.replace(/-/g, "+").replace(/_/g, "/"))));
+
+function buildShareLink({ ref, text, abbr, chapter, verse }) {
+  const p = b64enc(JSON.stringify({ r: ref, t: text, a: abbr, c: chapter, v: verse }));
+  return `${window.location.origin}/api/m?m=${p}`; // a função /api/m devolve a prévia (título e texto) e leva ao app
+}
+function readShareParam() {
+  try {
+    const m = new URLSearchParams(window.location.search).get("m");
+    if (!m) return null;
+    const o = JSON.parse(b64dec(m));
+    return o && o.t ? o : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+// Harpa de brinquedo: notas "dedilhadas" (onda triangular + harmônico, com eco) em arpejos C – Am – F – G.
+function createHarpPlayer() {
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if (!AC) return null;
+  const ctx = new AC();
+  const master = ctx.createGain();
+  master.gain.value = 0;
+  master.connect(ctx.destination);
+  const delay = ctx.createDelay(1);
+  delay.delayTime.value = 0.3;
+  const fb = ctx.createGain();
+  fb.gain.value = 0.35;
+  const wet = ctx.createGain();
+  wet.gain.value = 0.45;
+  master.connect(delay);
+  delay.connect(fb);
+  fb.connect(delay);
+  delay.connect(wet);
+  wet.connect(ctx.destination);
+
+  const CHORDS = [
+    [261.63, 329.63, 392.0, 523.25], // C
+    [220.0, 261.63, 329.63, 440.0], // Am
+    [174.61, 261.63, 349.23, 440.0], // F
+    [196.0, 293.66, 392.0, 493.88], // G
+  ];
+  const PATTERN = [0, 1, 2, 3, 2, 1];
+  const STEP = 0.4;
+  let step = 0;
+  let nextTime = 0;
+  let timer = null;
+  let stopped = false;
+
+  const pluck = (freq, t, vel) => {
+    const o = ctx.createOscillator();
+    o.type = "triangle";
+    o.frequency.value = freq;
+    const o2 = ctx.createOscillator();
+    o2.type = "sine";
+    o2.frequency.value = freq * 2;
+    const g2 = ctx.createGain();
+    g2.gain.value = 0.25;
+    const f = ctx.createBiquadFilter();
+    f.type = "lowpass";
+    f.frequency.value = 3400;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(vel, t + 0.012);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 2.4);
+    o.connect(f);
+    o2.connect(g2);
+    g2.connect(f);
+    f.connect(g);
+    g.connect(master);
+    o.start(t);
+    o2.start(t);
+    o.stop(t + 2.5);
+    o2.stop(t + 2.5);
+  };
+
+  const schedule = () => {
+    if (stopped) return;
+    while (nextTime < ctx.currentTime + 0.8) {
+      const chord = CHORDS[Math.floor(step / (PATTERN.length * 2)) % CHORDS.length];
+      const note = chord[PATTERN[step % PATTERN.length]];
+      pluck(note, nextTime, step % PATTERN.length === 0 ? 0.32 : 0.22);
+      if (step % PATTERN.length === 0) pluck(chord[0] / 2, nextTime, 0.2); // baixo no início de cada arpejo
+      nextTime += STEP;
+      step += 1;
+    }
+  };
+
+  return {
+    start() {
+      ctx.resume && ctx.resume();
+      nextTime = ctx.currentTime + 0.15;
+      master.gain.cancelScheduledValues(ctx.currentTime);
+      master.gain.setValueAtTime(0, ctx.currentTime);
+      master.gain.linearRampToValueAtTime(0.55, ctx.currentTime + 1.5);
+      schedule();
+      timer = setInterval(schedule, 250);
+      // some devagar depois de ~50s, para não ficar tocando pra sempre
+      setTimeout(() => this.stop(), 50000);
+    },
+    setMuted(m) {
+      master.gain.cancelScheduledValues(ctx.currentTime);
+      master.gain.linearRampToValueAtTime(m ? 0 : 0.55, ctx.currentTime + 0.4);
+    },
+    stop() {
+      if (stopped) return;
+      stopped = true;
+      clearInterval(timer);
+      try {
+        master.gain.cancelScheduledValues(ctx.currentTime);
+        master.gain.linearRampToValueAtTime(0, ctx.currentTime + 1);
+        setTimeout(() => ctx.close && ctx.close().catch(() => {}), 1300);
+      } catch (e) {}
+    },
+  };
+}
+
+function ReceberMensagem({ msg, onEnter, onOpenChapter }) {
+  const [aberta, setAberta] = useState(false);
+  const [mudo, setMudo] = useState(false);
+  const [lendo, setLendo] = useState(false);
+  const harpRef = useRef(null);
+  const palette = CARD_PALETTES[hashStr(msg.r) % CARD_PALETTES.length];
+  const words = String(msg.t || "").split(" ");
+
+  useEffect(
+    () => () => {
+      if (harpRef.current) harpRef.current.stop();
+      if (window.speechSynthesis) window.speechSynthesis.cancel();
+    },
+    []
+  );
+
+  const abrir = () => {
+    setAberta(true);
+    try {
+      harpRef.current = createHarpPlayer();
+      if (harpRef.current) harpRef.current.start();
+    } catch (e) {}
+  };
+  const alternarSom = () => {
+    const novo = !mudo;
+    setMudo(novo);
+    if (harpRef.current) harpRef.current.setMuted(novo);
+  };
+  const ouvir = () => {
+    if (!window.speechSynthesis) return;
+    if (lendo) {
+      window.speechSynthesis.cancel();
+      setLendo(false);
+      return;
+    }
+    window.speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(`${msg.t}. ${msg.r}`);
+    u.lang = "pt-BR";
+    const pt = window.speechSynthesis.getVoices().find((v) => v.lang && v.lang.toLowerCase().startsWith("pt"));
+    if (pt) u.voice = pt;
+    u.rate = 0.9;
+    u.onend = () => setLendo(false);
+    u.onerror = () => setLendo(false);
+    setLendo(true);
+    window.speechSynthesis.speak(u);
+  };
+
+  const particulas = Array.from({ length: 26 }, (_, i) => ({
+    left: (i * 37 + 11) % 100,
+    size: 4 + ((i * 7) % 9),
+    dur: 7 + ((i * 5) % 9),
+    delay: -((i * 3) % 11),
+  }));
+
+  return (
+    <div className="fixed inset-0 z-[200] overflow-y-auto" style={{ background: `radial-gradient(ellipse at 50% 30%, ${palette[1]} 0%, ${palette[0]} 70%)`, color: "#FBF6ED" }}>
+      <style>{`
+        @keyframes rcvFloat { 0% { transform: translateY(0) scale(.6); opacity: 0; } 15% { opacity: .9; } 100% { transform: translateY(-115vh) scale(1.1); opacity: 0; } }
+        @keyframes rcvWord { from { opacity: 0; filter: blur(8px); transform: translateY(10px); } to { opacity: 1; filter: blur(0); transform: none; } }
+        @keyframes rcvSpin { from { transform: translate(-50%, -50%) rotate(0deg); } to { transform: translate(-50%, -50%) rotate(360deg); } }
+        @keyframes rcvPulse { 0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(233,199,101,.55); } 50% { transform: scale(1.05); box-shadow: 0 0 0 18px rgba(233,199,101,0); } }
+        @keyframes rcvIn { from { opacity: 0; transform: translateY(16px) scale(.97); } to { opacity: 1; transform: none; } }
+        .rcv-part { position: absolute; bottom: -20px; border-radius: 9999px; background: radial-gradient(circle, #FFF3C4 0%, #E9C765 55%, rgba(233,199,101,0) 70%); animation: rcvFloat linear infinite; pointer-events: none; }
+        .rcv-rays { position: absolute; left: 50%; top: 34%; width: 150vmax; height: 150vmax; background: repeating-conic-gradient(from 0deg, rgba(233,199,101,.11) 0deg 6deg, rgba(233,199,101,0) 6deg 18deg); animation: rcvSpin 90s linear infinite; pointer-events: none; -webkit-mask-image: radial-gradient(circle, #000 0%, transparent 55%); mask-image: radial-gradient(circle, #000 0%, transparent 55%); }
+        .rcv-word { display: inline-block; opacity: 0; animation: rcvWord .9s ease-out forwards; }
+        .rcv-pulse { animation: rcvPulse 1.8s ease-in-out infinite; }
+        .rcv-in { animation: rcvIn .8s ease-out both; }
+        @media (prefers-reduced-motion: reduce) { .rcv-part, .rcv-rays, .rcv-pulse { animation: none; } .rcv-word { animation-duration: .01s; animation-delay: 0s !important; } }
+      `}</style>
+      <div className="rcv-rays" />
+      {particulas.map((p, i) => (
+        <span key={i} className="rcv-part" style={{ left: `${p.left}%`, width: p.size, height: p.size, animationDuration: `${p.dur}s`, animationDelay: `${p.delay}s` }} />
+      ))}
+
+      <div className="relative min-h-full flex flex-col items-center justify-center text-center px-6 py-10 max-w-xl mx-auto">
+        <img src="/logo-icone.png" alt="Bíblia Avivar" className="h-14 w-auto mb-5 rcv-in" />
+
+        {!aberta ? (
+          <div className="rcv-in flex flex-col items-center">
+            <div className="w-24 h-24 rounded-full flex items-center justify-center mb-6" style={{ background: "rgba(233,199,101,.14)", border: "1px solid #E9C76588" }}>
+              <Sparkles size={42} color="#E9C765" />
+            </div>
+            <p className="text-xs font-mono uppercase tracking-[0.25em]" style={{ color: "#E9C765" }}>Bíblia Avivar</p>
+            <h1 className="font-display text-3xl sm:text-4xl font-bold mt-2 leading-tight" style={{ fontFamily: "'Playfair Display', serif" }}>Você recebeu uma mensagem</h1>
+            <p className="text-sm mt-3 max-w-xs" style={{ color: "#D9D2E6" }}>Alguém lembrou de você e quis lhe entregar uma palavra de Deus.</p>
+            <button onClick={abrir} className="rcv-pulse mt-8 inline-flex items-center gap-2 rounded-full px-7 py-3.5 text-base font-bold focus:outline-none focus:ring-2" style={{ background: "linear-gradient(135deg,#F3D77C,#CBA135)", color: "#2A1B00" }}>
+              <Music size={18} /> Toque para abrir
+            </button>
+            <p className="text-[11px] mt-3" style={{ color: "#B9B0CC" }}>Ligue o som do celular 🎵</p>
+          </div>
+        ) : (
+          <div className="w-full flex flex-col items-center">
+            <p className="text-xs font-mono uppercase tracking-[0.25em] rcv-in" style={{ color: "#E9C765" }}>Uma palavra para você</p>
+            <div className="w-14 h-px my-4" style={{ background: "#E9C765" }} />
+            <p className="font-display text-2xl sm:text-3xl leading-snug" style={{ fontFamily: "'Playfair Display', serif", textShadow: "0 2px 18px rgba(0,0,0,.35)" }}>
+              <span aria-hidden="true">“</span>
+              {words.map((w, i) => (
+                <span key={i} className="rcv-word" style={{ animationDelay: `${0.5 + Math.min(i, 60) * 0.11}s` }}>{w}{i < words.length - 1 ? "\u00A0" : ""}</span>
+              ))}
+              <span aria-hidden="true">”</span>
+            </p>
+            <p className="rcv-word mt-6 text-lg font-bold" style={{ color: "#E9C765", animationDelay: `${0.8 + Math.min(words.length, 60) * 0.11}s` }}>{msg.r}</p>
+
+            <div className="rcv-word mt-9 flex flex-wrap items-center justify-center gap-2" style={{ animationDelay: `${1.2 + Math.min(words.length, 60) * 0.11}s` }}>
+              <button onClick={alternarSom} className="inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-semibold" style={{ background: "rgba(255,255,255,.12)", border: "1px solid #ffffff33" }}>
+                {mudo ? <VolumeX size={14} /> : <Volume2 size={14} />} {mudo ? "Som desligado" : "Som ligado"}
+              </button>
+              <button onClick={ouvir} className="inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-semibold" style={{ background: "rgba(255,255,255,.12)", border: "1px solid #ffffff33" }}>
+                {lendo ? <Square size={13} /> : <Play size={13} />} {lendo ? "Parar leitura" : "Ouvir a mensagem"}
+              </button>
+            </div>
+            <div className="rcv-word mt-6 flex flex-col sm:flex-row gap-2.5 w-full max-w-xs sm:max-w-none sm:justify-center" style={{ animationDelay: `${1.5 + Math.min(words.length, 60) * 0.11}s` }}>
+              {msg.a && (
+                <button onClick={() => { if (harpRef.current) harpRef.current.stop(); onOpenChapter(msg); }} className="rounded-full px-6 py-3 text-sm font-bold" style={{ background: "linear-gradient(135deg,#F3D77C,#CBA135)", color: "#2A1B00" }}>
+                  Ler o capítulo completo
+                </button>
+              )}
+              <button onClick={() => { if (harpRef.current) harpRef.current.stop(); onEnter(); }} className="rounded-full px-6 py-3 text-sm font-semibold" style={{ border: "1px solid #E9C76599", color: "#F3E6B8" }}>
+                Conhecer a Bíblia Avivar
+              </button>
+            </div>
+          </div>
+        )}
+        <p className="mt-10 text-[11px]" style={{ color: "#A99FBE" }}>Ministério Avivar do Espírito</p>
+      </div>
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------------- */
+/* Abertura do app (tela de boas-vindas) — aparece uma vez por sessão */
+/* ---------------------------------------------------------------- */
+function HarpIcon({ size = 24, color = "#E9C765" }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M6 3c5 0 9 3 9 8 0 4-2 7-4 10H6V3z" />
+      <path d="M6 3c0 6 2 12 5 18" />
+      <path d="M9 5v13M12 7v11M14.5 9.5v8" />
+      <path d="M4 21h9" />
+    </svg>
+  );
+}
+
+const INTRO_ITENS = [
+  { icon: BookOpen, titulo: "Bíblia Sagrada completa", desc: "Os 66 livros, com leitura em voz alta e marca-texto." },
+  { icon: GraduationCap, titulo: "Estudo de cada livro", desc: "História, contexto e ensinamentos Avivar." },
+  { icon: "harpa", titulo: "Harpa Cristã", desc: "Conheça a história do hinário que o Brasil canta." },
+  { icon: WifiOff, titulo: "Leia sem internet", desc: "Instale no celular e leve a Palavra para qualquer lugar." },
+];
+
+function IntroBoasVindas({ onEnter }) {
+  useEffect(() => {
+    const t = setTimeout(onEnter, 9000);
+    return () => clearTimeout(t);
+  }, []);
+  return (
+    <div className="fixed inset-0 z-[150] overflow-y-auto" style={{ background: "radial-gradient(ellipse at 50% 0%, #2B1D4A 0%, #0B0B0C 62%)", color: "#FBF6ED" }} onClick={onEnter}>
+      <style>{`
+        @keyframes introUp { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: none; } }
+        @keyframes introGlow { 0%, 100% { box-shadow: 0 0 30px rgba(233,199,101,.25); } 50% { box-shadow: 0 0 60px rgba(233,199,101,.55); } }
+        .intro-up { opacity: 0; animation: introUp .8s ease-out forwards; }
+        .intro-glow { animation: introGlow 3s ease-in-out infinite; }
+        @media (prefers-reduced-motion: reduce) { .intro-up { animation-duration: .01s; animation-delay: 0s !important; } .intro-glow { animation: none; } }
+      `}</style>
+      <div className="min-h-full max-w-md mx-auto px-6 py-10 flex flex-col items-center text-center">
+        <div className="intro-up" style={{ animationDelay: "0s" }}>
+          <div className="intro-glow w-24 h-24 rounded-full flex items-center justify-center" style={{ background: "#0B0B0C", border: "1px solid #CBA13577" }}>
+            <img src="/logo-icone.png" alt="Ministério Avivar do Espírito" className="h-14 w-auto" />
+          </div>
+        </div>
+        <p className="intro-up mt-6 text-[11px] font-mono uppercase tracking-[0.3em]" style={{ color: "#CBA135", animationDelay: ".2s" }}>Ministério Avivar do Espírito</p>
+        <h1 className="intro-up font-display text-4xl font-bold mt-2" style={{ fontFamily: "'Playfair Display', serif", color: "#F3E6B8", animationDelay: ".3s" }}>Bíblia Avivar</h1>
+        <p className="intro-up text-sm mt-2" style={{ color: "#C9C2D8", animationDelay: ".4s" }}>Leia. Entenda. Viva a Palavra.</p>
+        <div className="intro-up w-12 h-0.5 my-6" style={{ background: "#CBA135", animationDelay: ".5s" }} />
+
+        <div className="w-full space-y-3 text-left">
+          {INTRO_ITENS.map((it, i) => (
+            <div key={it.titulo} className="intro-up flex items-center gap-3.5 rounded-xl px-4 py-3" style={{ background: "rgba(255,255,255,.06)", border: "1px solid #CBA13533", animationDelay: `${0.6 + i * 0.15}s` }}>
+              <div className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0" style={{ background: "#CBA13522" }}>
+                {it.icon === "harpa" ? <HarpIcon size={22} /> : <it.icon size={20} color="#E9C765" />}
+              </div>
+              <div>
+                <p className="text-sm font-semibold" style={{ color: "#FBF6ED" }}>{it.titulo}</p>
+                <p className="text-xs leading-snug" style={{ color: "#B9B0CC" }}>{it.desc}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <button onClick={(e) => { e.stopPropagation(); onEnter(); }} className="intro-up mt-8 rounded-full px-10 py-3.5 text-base font-bold focus:outline-none focus:ring-2" style={{ background: "linear-gradient(135deg,#F3D77C,#CBA135)", color: "#2A1B00", animationDelay: "1.3s" }}>
+          Entrar
+        </button>
+        <p className="intro-up text-[11px] mt-3" style={{ color: "#8F86A6", animationDelay: "1.4s" }}>Toque em qualquer lugar para continuar</p>
+      </div>
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------------- */
+/* Usar sem internet — baixa a Bíblia e os arquivos do app no aparelho */
+/* ---------------------------------------------------------------- */
+const OFFLINE_CACHE = "biblia-avivar-offline-v1";
+const OFFLINE_FLAG = "biblia:offlinePronto";
+function loadOfflineFlag() {
+  try {
+    return localStorage.getItem(OFFLINE_FLAG);
+  } catch (e) {
+    return null;
+  }
+}
+async function prepararOffline() {
+  if (!("caches" in window)) throw new Error("Este navegador não permite uso offline.");
+  const cache = await caches.open(OFFLINE_CACHE);
+  await loadStaticBible(); // baixa a Bíblia inteira (um único arquivo)
+  const urls = new Set(["/", "/index.html", "/manifest.json", "/logo-icone.png", "/icon-192.png", "/icon-512.png", BIBLIA_HERO_IMG, "/og-biblia-avivar.jpg", STATIC_BIBLE_URL]);
+  try {
+    performance.getEntriesByType("resource").forEach((r) => {
+      if (r.name.startsWith(window.location.origin) || r.name.includes("fonts.googleapis.com") || r.name.includes("fonts.gstatic.com")) urls.add(r.name);
+    });
+  } catch (e) {}
+  let ok = 0;
+  await Promise.all(
+    [...urls].map(async (u) => {
+      try {
+        const res = await fetch(u, { mode: u.startsWith(window.location.origin) ? "same-origin" : "cors" });
+        if (res.ok) {
+          await cache.put(u, res);
+          ok += 1;
+        }
+      } catch (e) {}
+    })
+  );
+  if (!(await cache.match(STATIC_BIBLE_URL))) throw new Error("A Bíblia não foi guardada. Tente de novo com internet melhor.");
+  try {
+    localStorage.setItem(OFFLINE_FLAG, new Date().toISOString());
+  } catch (e) {}
+  return ok;
+}
+
+function OfflineCard() {
+  const [estado, setEstado] = useState(loadOfflineFlag() ? "pronto" : "ocioso");
+  const [data, setData] = useState(loadOfflineFlag());
+  const [erro, setErro] = useState("");
+  const [instalador, setInstalador] = useState(null);
+  const [instalado, setInstalado] = useState(() => {
+    try {
+      return window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true;
+    } catch (e) {
+      return false;
+    }
+  });
+  useEffect(() => {
+    const h = (e) => {
+      e.preventDefault();
+      setInstalador(e);
+    };
+    const ok = () => setInstalado(true);
+    window.addEventListener("beforeinstallprompt", h);
+    window.addEventListener("appinstalled", ok);
+    return () => {
+      window.removeEventListener("beforeinstallprompt", h);
+      window.removeEventListener("appinstalled", ok);
+    };
+  }, []);
+  const instalar = async () => {
+    if (!instalador) return;
+    instalador.prompt();
+    try {
+      await instalador.userChoice;
+    } catch (e) {}
+    setInstalador(null);
+  };
+  const baixar = async () => {
+    setEstado("baixando");
+    setErro("");
+    try {
+      await prepararOffline();
+      setData(loadOfflineFlag());
+      setEstado("pronto");
+    } catch (e) {
+      setErro(e && e.message ? e.message : "Não foi possível baixar agora.");
+      setEstado("erro");
+    }
+  };
+  const dataTxt = data ? new Date(data).toLocaleDateString("pt-BR") : "";
+  return (
+    <div className="rounded-2xl border p-5 flex items-center gap-4 flex-wrap" style={{ background: C.cream, borderColor: C.gold + "55" }}>
+      <div className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0" style={{ background: C.gold + "22" }}>
+        {estado === "pronto" ? <CheckCircle2 size={22} color="#2E7D4F" /> : <WifiOff size={21} color={C.goldDeep} />}
+      </div>
+      <div className="flex-1 min-w-[200px]">
+        <p className="font-semibold text-sm" style={{ color: C.ink }}>{estado === "pronto" ? "Pronta para usar sem internet" : "Usar sem internet"}</p>
+        <p className="text-xs leading-snug mt-0.5" style={{ color: C.stone }}>
+          {estado === "pronto"
+            ? `A Bíblia foi guardada neste aparelho${dataTxt ? ` em ${dataTxt}` : ""}. Instale o app (menu do navegador → Instalar / Adicionar à tela inicial) para abrir como aplicativo.`
+            : "Baixe a Bíblia para este aparelho e leia em qualquer lugar. Para abrir como aplicativo, use o menu do navegador → Instalar app / Adicionar à tela inicial."}
+        </p>
+        {estado === "erro" && <p className="text-xs mt-1" style={{ color: "#B03428" }}>{erro}</p>}
+      </div>
+      {instalador && !instalado && (
+        <Btn variant="ghost" onClick={instalar}><Smartphone size={14} /> Instalar app</Btn>
+      )}
+      <Btn onClick={baixar} disabled={estado === "baixando"} className="disabled:opacity-60">
+        {estado === "baixando" ? <><Loader2 size={14} className="animate-spin" /> Baixando...</> : estado === "pronto" ? <><Download size={14} /> Atualizar</> : <><Download size={14} /> Baixar para usar sem internet</>}
+      </Btn>
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------------- */
+/* Harpa Cristã — história do hinário                                  */
+/* ---------------------------------------------------------------- */
+const HARPA_LINHA_TEMPO = [
+  { ano: "1861", titulo: "Salmos e Hinos", texto: "Os evangélicos brasileiros cantavam com o hinário Salmos e Hinos, do casal de missionários Robert e Sarah Kalley (edição brasileira de 1861, com 50 títulos). A Assembleia de Deus ainda não tinha hinário próprio e usava esse livro." },
+  { ano: "1911", titulo: "A Assembleia de Deus nasce em Belém", texto: "Os missionários suecos Gunnar Vingren e Daniel Berg fundaram em Belém do Pará a igreja que viria a ser a Assembleia de Deus no Brasil. Os hinos trazidos por eles vinham da tradição de cantos evangélicos da Suécia." },
+  { ano: "1921", titulo: "Cantor Pentecostal", texto: "Em Belém, saiu o Cantor Pentecostal, com 44 hinos e 10 corinhos, impresso na tipografia Guajarina, com orientação editorial de Almeida Sobrinho. Foi o primeiro passo para um hinário próprio." },
+  { ano: "1922", titulo: "Nasce a Harpa Cristã", texto: "Em Recife (PE) foi lançada a primeira edição da Harpa Cristã, sob a orientação editorial do pastor Adriano Nobre, com tiragem de mil exemplares distribuídos pelo missionário Samuel Nyström. Algumas fontes registram cerca de 100 hinos nessa primeira edição." },
+  { ano: "1923", titulo: "Segunda edição: 300 hinos", texto: "Impressa no Rio de Janeiro, a segunda edição triplicou o número de hinos, chegando a 300." },
+  { ano: "1932", titulo: "400 hinos", texto: "A Harpa chegou a 400 hinos. Nesse período, mesmo sem música impressa em todas as edições, o hinário já era o livro de canto das igrejas." },
+  { ano: "1937", titulo: "Comissão para a edição com música", texto: "A Convenção Geral das Assembleias de Deus, reunida em São Paulo, nomeou uma comissão para publicar a Harpa Cristã com música. Participaram, entre outros, Emílio Conde, Samuel Nyström e Paulo Leivas Macalão." },
+  { ano: "1941", titulo: "524 hinos", texto: "A Harpa chegou a 524 hinos, número que marcou o hinário por décadas." },
+  { ano: "1979", titulo: "Revisão da CPAD", texto: "A Casa Publicadora das Assembleias de Deus (CPAD) formou uma comissão de revisão de letras e músicas, por proposta do pastor Adilson Soares da Fonseca." },
+  { ano: "1992", titulo: "Harpa Cristã Atualizada", texto: "A CPAD lançou uma edição atualizada. Muitas igrejas, porém, preferiram continuar com a versão tradicional." },
+  { ano: "Fim dos anos 1990", titulo: "Harpa Cristã Ampliada: 640 hinos", texto: "Os 524 hinos tradicionais, com a numeração antiga preservada, ganharam mais 116: são os 640 hinos de hoje. (As fontes variam entre 1996 e 1999 para essa edição.)" },
+];
+
+const HARPA_FONTES = [
+  { nome: "Wikipédia — Harpa Cristã", url: "https://pt.wikipedia.org/wiki/Harpa_Crist%C3%A3" },
+  { nome: "Billboard Brasil — Conheça a Harpa Cristã, considerada a “bíblia cantada”", url: "https://billboard.com.br/conheca-a-harpa-crista-considerada-a-biblia-cantada/" },
+  { nome: "AD Tcdeipu — 100 anos da Harpa Cristã", url: "https://www.adtcdeipu.com.br/news-6-100-anos-da-harpa-crista-conheca-a-historia-do-hinario-oficial-das-assembleias-de-deus" },
+  { nome: "IEAD JO — História da Harpa Cristã", url: "https://ieadjo.com/artigos/historia-da-harpa-crista" },
+  { nome: "Revista Cristão Alerta — A Harpa Cristã e a sua história", url: "https://www.cristaoalerta.com.br/2020/05/harpa-crista-sua-historia.html" },
+];
+
+/* ---------------------------------------------------------------- */
+/* Hinário — textos cadastrados pelo ministério (só o que há permissão */
+/* de publicar). O admin cadastra um a um ou importa em lote.          */
+/* ---------------------------------------------------------------- */
+const semAcento = (t) => String(t || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+
+// Importação em lote: aceita vários jeitos de o arquivo vir numerado.
+//  "marcado"  → "### 12 - Título" ou "Hino 12 - Título"
+//  "numerado" → "12. Título", "12 - Título" ou "12) Título" (a numeração precisa seguir a ordem)
+//  "linha"    → o número sozinho numa linha e o título na linha seguinte
+const FORMATOS_LOTE = [
+  ["auto", "Detectar sozinho"],
+  ["marcado", "### 12 - Título  (ou Hino 12 - Título)"],
+  ["numerado", "12. Título  (ou 12 - Título, 12) Título)"],
+  ["linha", "Número sozinho na linha, título na linha de baixo"],
+];
+
+function parseHinosLoteComo(txt, formato) {
+  const linhas = String(txt || "").replace(/^\uFEFF/, "").split(/\r?\n/).map((l) => l.replace(/\s+$/, ""));
+  const out = [];
+  let cur = null;
+  let ultimo = 0;
+  const abre = (numero, titulo) => {
+    if (cur) out.push(cur);
+    cur = { numero, titulo: titulo.trim(), letra: "" };
+    ultimo = numero;
+  };
+  const sequencia = (n) => n > ultimo && n <= ultimo + 5; // evita confundir "2." de estrofe com um hino novo
+  for (let i = 0; i < linhas.length; i++) {
+    const l = linhas[i];
+    let m;
+    if (formato === "marcado" && (m = l.match(/^\s*(?:#{1,3}\s*|hino\s+)(\d{1,3})\s*[-–—.:)]?\s*(.*)$/i))) {
+      abre(Number(m[1]), m[2] || "");
+      continue;
+    }
+    if (formato === "numerado" && (m = l.match(/^\s*(\d{1,3})\s*[-–—.)]\s*(\S.{0,80})$/)) && (ultimo === 0 || sequencia(Number(m[1])))) {
+      abre(Number(m[1]), m[2]);
+      continue;
+    }
+    if (formato === "linha" && (m = l.match(/^\s*(\d{1,3})\s*$/)) && (ultimo === 0 || sequencia(Number(m[1])))) {
+      let j = i + 1;
+      while (j < linhas.length && !linhas[j].trim()) j++;
+      if (j < linhas.length) {
+        abre(Number(m[1]), linhas[j]);
+        i = j;
+        continue;
+      }
+    }
+    if (cur) cur.letra += l + "\n";
+  }
+  if (cur) out.push(cur);
+  return out
+    .map((h) => ({ ...h, letra: h.letra.replace(/\n{3,}/g, "\n\n").trim() }))
+    .filter((h) => h.numero && h.titulo && h.letra);
+}
+
+function parseHinosLote(txt, formato = "auto") {
+  if (formato !== "auto") return parseHinosLoteComo(txt, formato);
+  for (const f of ["marcado", "numerado", "linha"]) {
+    const r = parseHinosLoteComo(txt, f);
+    if (r.length) return r;
+  }
+  return [];
+}
+
+function HarpaHinos({ hinos, saveHinos, adminMode }) {
+  const [busca, setBusca] = useState("");
+  const [aberto, setAberto] = useState(null); // número do hino aberto
+  const [edit, setEdit] = useState(null); // { numero, titulo, letra } em edição
+  const [lote, setLote] = useState("");
+  const [formato, setFormato] = useState("auto");
+  const [aviso, setAviso] = useState("");
+  const [fonte, setFonte] = useState(17);
+
+  const ordenados = useMemo(() => [...hinos].sort((a, b) => a.numero - b.numero), [hinos]);
+  const q = semAcento(busca).trim();
+  const lista = ordenados.filter((h) => !q || String(h.numero) === q || semAcento(h.titulo).includes(q) || String(h.numero).startsWith(q));
+  const hino = aberto != null ? hinos.find((h) => h.numero === aberto) : null;
+
+  const salvarUm = () => {
+    const numero = Number(edit.numero);
+    if (!numero || !edit.titulo.trim() || !edit.letra.trim()) {
+      setAviso("Preencha número, título e texto.");
+      return;
+    }
+    const novo = { numero, titulo: edit.titulo.trim(), letra: edit.letra.trim() };
+    saveHinos([...hinos.filter((h) => h.numero !== numero), novo]);
+    setEdit(null);
+    setAviso(`Hino ${numero} salvo.`);
+  };
+  const importar = () => {
+    const novos = parseHinosLote(lote, formato);
+    if (!novos.length) {
+      setAviso("Não encontrei hinos nesse formato. Troque o formato acima ou confira se cada hino começa numerado.");
+      return;
+    }
+    const nums = new Set(novos.map((h) => h.numero));
+    saveHinos([...hinos.filter((h) => !nums.has(h.numero)), ...novos]);
+    setLote("");
+    setAviso(`${novos.length} hino(s) importado(s).`);
+  };
+  const previaLote = useMemo(() => (lote.trim() ? parseHinosLote(lote, formato) : []), [lote, formato]);
+  const lerArquivo = (e) => {
+    const f = e.target.files && e.target.files[0];
+    if (!f) return;
+    const r = new FileReader();
+    r.onload = () => setLote(String(r.result || ""));
+    r.readAsText(f, "utf-8");
+    e.target.value = "";
+  };
+  const excluir = (n) => {
+    if (!window.confirm(`Excluir o hino ${n}?`)) return;
+    saveHinos(hinos.filter((h) => h.numero !== n));
+    setAberto(null);
+  };
+  const copiar = async (h) => {
+    try {
+      await navigator.clipboard.writeText(`${h.numero} - ${h.titulo}\n\n${h.letra}\n\nHarpa Cristã · Bíblia Avivar`);
+      setAviso("Texto copiado.");
+    } catch (e) {
+      setAviso("Não foi possível copiar.");
+    }
+  };
+
+  if (hino) {
+    return (
+      <div className="max-w-3xl mx-auto px-4 sm:px-6 py-8">
+        <BackButton onClick={() => setAberto(null)} label="Voltar aos hinos" />
+        <p className="text-xs font-mono uppercase tracking-[0.2em]" style={{ color: C.gold }}>Harpa Cristã · Hino {hino.numero}</p>
+        <h2 className="font-display text-3xl font-bold mt-1" style={{ fontFamily: "'Playfair Display', serif", color: C.ink }}>{hino.titulo}</h2>
+        <div className="flex flex-wrap gap-2 mt-4">
+          <Btn variant="ghost" onClick={() => setFonte((f) => Math.max(13, f - 2))}>A−</Btn>
+          <Btn variant="ghost" onClick={() => setFonte((f) => Math.min(30, f + 2))}>A+</Btn>
+          <Btn variant="ghost" onClick={() => copiar(hino)}><Link2 size={14} /> Copiar texto</Btn>
+          {adminMode && <Btn variant="ghost" onClick={() => setEdit({ ...hino })}>Editar</Btn>}
+          {adminMode && <Btn variant="ghost" color="#B03428" onClick={() => excluir(hino.numero)}><Trash2 size={14} /> Excluir</Btn>}
+        </div>
+        <div className="mt-6 whitespace-pre-line" style={{ fontFamily: "'Playfair Display', serif", fontSize: fonte, lineHeight: 1.8, color: "#241F30" }}>{hino.letra}</div>
+        {aviso && <p className="text-xs mt-4" style={{ color: C.goldDeep }}>{aviso}</p>}
+        {adminMode && edit && <HinoForm edit={edit} setEdit={setEdit} onSave={salvarUm} aviso={aviso} />}
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-w-3xl mx-auto px-4 sm:px-6 py-8">
+      <div className="flex items-center gap-2">
+        <Search size={16} color={C.stone} />
+        <input placeholder="Buscar por número ou título..." value={busca} onChange={(e) => setBusca(e.target.value)} className={`${inputCls} max-w-sm`} />
+      </div>
+
+      {ordenados.length === 0 ? (
+        <div className="rounded-xl p-5 mt-6 text-sm leading-relaxed" style={{ background: C.gold + "18", border: `1px solid ${C.gold}55`, color: "#3A3447" }}>
+          <b>Os hinos serão publicados aqui.</b> O ministério está cadastrando os textos que tem autorização para divulgar. Enquanto isso, leia a história da Harpa Cristã na aba “História”.
+        </div>
+      ) : (
+        <div className="mt-5 space-y-2">
+          {lista.length === 0 && <p className="text-sm italic" style={{ color: C.stone }}>Nenhum hino encontrado.</p>}
+          {lista.map((h) => (
+            <button key={h.numero} onClick={() => { setAviso(""); setAberto(h.numero); window.scrollTo(0, 0); }} className="w-full text-left flex items-center gap-3 rounded-lg border px-4 py-3 focus:outline-none focus:ring-2" style={{ borderColor: C.line, background: C.cream }}>
+              <span className="font-mono text-sm font-bold w-10 shrink-0" style={{ color: C.goldDeep }}>{h.numero}</span>
+              <span className="font-display font-semibold text-[15px]" style={{ fontFamily: "'Playfair Display', serif", color: C.ink }}>{h.titulo}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {adminMode && (
+        <div className="mt-8 rounded-xl border p-4" style={{ borderColor: C.gold + "66", background: C.cream }}>
+          <p className="text-xs font-mono uppercase tracking-[0.15em] font-semibold" style={{ color: C.goldDeep }}>Administração do hinário</p>
+          <p className="text-xs mt-1 leading-snug" style={{ color: C.stone }}>Cadastre apenas textos de domínio público ou que o ministério tenha autorização para publicar (por exemplo, da CPAD).</p>
+          {edit ? (
+            <HinoForm edit={edit} setEdit={setEdit} onSave={salvarUm} aviso={aviso} />
+          ) : (
+            <div className="mt-3">
+              <Btn onClick={() => setEdit({ numero: "", titulo: "", letra: "" })}><Plus size={14} /> Cadastrar hino</Btn>
+            </div>
+          )}
+          <p className="text-xs font-semibold mt-5 mb-1" style={{ color: C.ink }}>Importar vários de uma vez</p>
+          <p className="text-[11px] mb-2 leading-snug" style={{ color: C.stone }}>Escolha um arquivo de texto (.txt) ou cole o conteúdo abaixo. Se estiver em Word ou PDF, copie o texto e cole aqui. Hinos com o mesmo número são substituídos.</p>
+          <div className="flex flex-wrap items-center gap-2 mb-2">
+            <label className="inline-flex items-center gap-2 rounded-md text-sm font-semibold px-4 py-2 cursor-pointer" style={{ border: `1px solid ${C.gold}55`, color: C.gold }}>
+              <Download size={14} /> Escolher arquivo .txt
+              <input type="file" accept=".txt,.text,text/plain" onChange={lerArquivo} className="hidden" />
+            </label>
+            <select value={formato} onChange={(e) => setFormato(e.target.value)} className={`${inputCls} !w-auto max-w-full`}>
+              {FORMATOS_LOTE.map(([k, label]) => <option key={k} value={k}>{label}</option>)}
+            </select>
+          </div>
+          <p className="text-[11px] mb-2 leading-snug" style={{ color: C.stone }}>Atenção: se as estrofes do seu texto também forem numeradas (1., 2., 3.), não use o formato “12. Título”, porque o app pode confundir estrofe com hino novo. Use “###” ou “Número sozinho na linha”. Confira sempre o resumo abaixo antes de importar.</p>
+          <textarea rows={6} value={lote} onChange={(e) => setLote(e.target.value)} placeholder={"### 1 - Título do hino\nTexto do hino...\n\n### 2 - Outro título\nTexto..."} className={inputCls} />
+          {lote.trim() && (
+            <p className="text-xs mt-2" style={{ color: previaLote.length ? "#2E7D4F" : "#B03428" }}>
+              {previaLote.length
+                ? `Encontrei ${previaLote.length} hino(s): do nº ${previaLote[0].numero} (${previaLote[0].titulo}) ao nº ${previaLote[previaLote.length - 1].numero} (${previaLote[previaLote.length - 1].titulo}).`
+                : "Não encontrei hinos nesse formato. Troque o formato."}
+            </p>
+          )}
+          <div className="mt-2"><Btn onClick={importar} disabled={!previaLote.length} className="disabled:opacity-50">Importar {previaLote.length ? `${previaLote.length} hinos` : "hinos"}</Btn></div>
+          {aviso && <p className="text-xs mt-3" style={{ color: C.goldDeep }}>{aviso}</p>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function HinoForm({ edit, setEdit, onSave, aviso }) {
+  return (
+    <div className="mt-4 space-y-2">
+      <div className="flex gap-2">
+        <input type="number" placeholder="Nº" value={edit.numero} onChange={(e) => setEdit({ ...edit, numero: e.target.value })} className={`${inputCls} !w-24`} />
+        <input placeholder="Título do hino" value={edit.titulo} onChange={(e) => setEdit({ ...edit, titulo: e.target.value })} className={inputCls} />
+      </div>
+      <textarea rows={10} placeholder="Texto do hino (separe as estrofes com uma linha em branco)" value={edit.letra} onChange={(e) => setEdit({ ...edit, letra: e.target.value })} className={inputCls} />
+      <div className="flex gap-2">
+        <Btn onClick={onSave}>Salvar hino</Btn>
+        <Btn variant="ghost" color={C.stone} onClick={() => setEdit(null)}>Cancelar</Btn>
+      </div>
+      {aviso && <p className="text-xs" style={{ color: "#B03428" }}>{aviso}</p>}
+    </div>
+  );
+}
+
+function HarpaCristaPage({ onBack, adminMode, hinos, saveHinos }) {
+  const [aba, setAba] = useState("historia");
+  return (
+    <div>
+      <div style={{ background: "linear-gradient(165deg, #0B0B0C 0%, #2B1D4A 70%, #0B0B0C 100%)" }}>
+        <div className="max-w-3xl mx-auto px-4 sm:px-6 py-10 text-center">
+          <button onClick={onBack} className="inline-flex items-center gap-1.5 text-sm font-medium mb-6 rounded-md px-1" style={{ color: C.goldBright }}>
+            <ArrowLeft size={16} /> Voltar
+          </button>
+          <div className="mx-auto w-16 h-16 rounded-full flex items-center justify-center" style={{ background: "#CBA13522", border: "1px solid #CBA13566" }}>
+            <HarpIcon size={34} />
+          </div>
+          <p className="text-[11px] font-mono uppercase tracking-[0.3em] mt-5" style={{ color: C.gold }}>Hinário · História</p>
+          <h1 className="font-display text-4xl font-bold mt-2" style={{ fontFamily: "'Playfair Display', serif", color: "#F3E6B8" }}>Harpa Cristã</h1>
+          <p className="font-display italic text-lg mt-1" style={{ fontFamily: "'Playfair Display', serif", color: "#E9DFC2" }}>a “Bíblia cantada” do povo evangélico brasileiro</p>
+          <div className="flex flex-wrap justify-center gap-2 mt-6">
+            {[["1922", "primeira edição"], ["Recife", "onde nasceu"], ["640", "hinos hoje"]].map(([n, l]) => (
+              <div key={n} className="rounded-xl px-4 py-2.5" style={{ background: "rgba(255,255,255,.07)", border: "1px solid #CBA13544" }}>
+                <p className="font-display text-xl font-bold" style={{ fontFamily: "'Playfair Display', serif", color: C.goldBright }}>{n}</p>
+                <p className="text-[11px]" style={{ color: "#B9B0CC" }}>{l}</p>
+              </div>
+            ))}
+          </div>
+          <div className="flex justify-center gap-2 mt-7">
+            {[["historia", "História"], ["hinos", `Hinos${hinos.length ? ` (${hinos.length})` : ""}`]].map(([k, label]) => (
+              <button key={k} onClick={() => setAba(k)} className="px-5 py-2 rounded-full text-sm font-semibold focus:outline-none focus:ring-2" style={{ background: aba === k ? C.gold : "transparent", color: aba === k ? "#2A1B00" : "#F3E6B8", border: `1px solid ${C.gold}88` }}>
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {aba === "hinos" ? (
+        <HarpaHinos hinos={hinos} saveHinos={saveHinos} adminMode={adminMode} />
+      ) : (
+      <div className="max-w-3xl mx-auto px-4 sm:px-6 py-10">
+        <Eyebrow>Como tudo começou</Eyebrow>
+        <p className="text-[15px] leading-relaxed" style={{ color: "#241F30" }}>
+          A Harpa Cristã é o hinário oficial das Assembleias de Deus no Brasil e é considerada o hinário evangélico mais usado do país. Seus hinos são cantados em cultos, em casa e nas ruas há mais de cem anos. Muitos cristãos a chamam de “Bíblia cantada”, porque ela leva a mensagem das Escrituras para a música.
+        </p>
+        <p className="text-[15px] leading-relaxed mt-3" style={{ color: "#241F30" }}>
+          Quem ajudou a dar forma à Harpa foram, principalmente, o pastor <b>Adriano Nobre</b> (orientação editorial da primeira edição), o missionário <b>Samuel Nyström</b> (que traduziu hinos da tradição escandinava e distribuiu os primeiros exemplares) e <b>Paulo Leivas Macalão</b>, apontado como o principal tradutor e adaptador do hinário, que adequou letras e melodias ao português.
+        </p>
+
+        <h2 className="font-display text-2xl font-bold mt-10 mb-5" style={{ fontFamily: "'Playfair Display', serif", color: C.ink }}>Linha do tempo</h2>
+        <div className="relative pl-6" style={{ borderLeft: `2px solid ${C.gold}66` }}>
+          {HARPA_LINHA_TEMPO.map((it) => (
+            <div key={it.ano + it.titulo} className="relative mb-6">
+              <span className="absolute -left-[31px] top-1.5 w-3 h-3 rounded-full" style={{ background: C.gold, boxShadow: `0 0 0 4px ${C.parchment}` }} />
+              <p className="text-xs font-mono font-bold uppercase tracking-wider" style={{ color: C.goldDeep }}>{it.ano}</p>
+              <p className="font-display font-bold text-lg leading-tight" style={{ fontFamily: "'Playfair Display', serif", color: C.ink }}>{it.titulo}</p>
+              <p className="text-sm leading-relaxed mt-1" style={{ color: "#3A3447" }}>{it.texto}</p>
+            </div>
+          ))}
+        </div>
+
+        <h2 className="font-display text-2xl font-bold mt-8 mb-4" style={{ fontFamily: "'Playfair Display', serif", color: C.ink }}>Por que ela marcou o Brasil</h2>
+        <p className="text-sm leading-relaxed" style={{ color: "#3A3447" }}>
+          A Harpa ajudou a uniformizar o jeito de cantar nas igrejas de regiões muito diferentes do país e criou uma identidade comum entre os irmãos. Muitos cantores evangélicos brasileiros cresceram cantando seus hinos, e vários artistas regravam essas canções até hoje.
+        </p>
+
+        <div className="rounded-xl p-4 mt-8 text-sm leading-relaxed" style={{ background: C.gold + "18", border: `1px solid ${C.gold}55`, color: "#3A3447" }}>
+          <b>Aviso:</b> por respeito aos direitos autorais do hinário, a Bíblia Avivar traz aqui a <b>história</b> da Harpa Cristã, sem reproduzir as letras dos hinos por conta própria. Os textos ficam na aba “Hinos” e só são publicados os que o ministério tem autorização para divulgar. Para cantar, use a Harpa da sua igreja ou adquira a edição oficial da CPAD. Os relatos variam um pouco entre as fontes (como o número de hinos da primeira edição e o ano da edição ampliada), e isso está indicado acima.
+        </div>
+
+        <h3 className="text-xs font-mono uppercase tracking-[0.15em] font-semibold mt-8 mb-2" style={{ color: C.ink }}>Fontes</h3>
+        <ul className="space-y-1.5">
+          {HARPA_FONTES.map((f) => (
+            <li key={f.url}>
+              <a href={f.url} target="_blank" rel="noopener noreferrer" className="text-xs underline break-words" style={{ color: C.goldDeep }}>{f.nome}</a>
+            </li>
+          ))}
+        </ul>
+      </div>
+      )}
+    </div>
+  );
 }
 
 /* ---------------------------------------------------------------- */
@@ -635,7 +1457,7 @@ function AcessoRapidoCard({ icon: Icon, tone, titulo, desc, onClick, disabled, e
   );
 }
 
-function Home({ onOpenBook, onAnotacoes }) {
+function Home({ onOpenBook, onAnotacoes, onHarpa }) {
   const [testament, setTestament] = useState("at");
   const [query, setQuery] = useState("");
   const [ultimaLeitura] = useState(loadUltimaLeituraLocal);
@@ -664,6 +1486,21 @@ function Home({ onOpenBook, onAnotacoes }) {
         </div>
       </div>
 
+      {/* HARPA CRISTÃ — destaque */}
+      <div className="max-w-5xl mx-auto px-4 sm:px-6 mt-4">
+        <button onClick={onHarpa} className="w-full text-left rounded-2xl p-4 sm:p-5 flex items-center gap-4 focus:outline-none focus:ring-2 transition hover:-translate-y-0.5" style={{ background: "linear-gradient(120deg, #1A1030 0%, #3A2563 100%)", border: `1px solid ${C.gold}66` }}>
+          <div className="w-12 h-12 rounded-full flex items-center justify-center shrink-0" style={{ background: "#CBA13525", border: "1px solid #CBA13566" }}>
+            <HarpIcon size={28} />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-[10px] font-mono uppercase tracking-[0.25em]" style={{ color: C.goldBright }}>Novo · Hinário</p>
+            <p className="font-display text-lg font-bold leading-tight" style={{ color: "#F3E6B8", fontFamily: "'Playfair Display', serif" }}>Harpa Cristã</p>
+            <p className="text-xs leading-snug" style={{ color: "#C9C2D8" }}>Conheça a história do hinário: como surgiu, quando, quem e onde.</p>
+          </div>
+          <ChevronRight size={20} color={C.goldBright} />
+        </button>
+      </div>
+
       {/* CONTINUE / PALAVRA DO DIA */}
       <div className="max-w-5xl mx-auto px-4 sm:px-6 mt-4 flex flex-col sm:flex-row gap-4">
         <ContinueLeituraCard ultimaLeitura={ultimaLeitura} onOpenBook={onOpenBook} />
@@ -671,12 +1508,18 @@ function Home({ onOpenBook, onAnotacoes }) {
       </div>
 
       {/* ACESSOS RÁPIDOS */}
-      <div className="max-w-5xl mx-auto px-4 sm:px-6 mt-6 grid grid-cols-2 sm:grid-cols-5 gap-3">
+      <div className="max-w-5xl mx-auto px-4 sm:px-6 mt-6 grid grid-cols-2 sm:grid-cols-3 gap-3">
         <AcessoRapidoCard icon={BookOpen} titulo="Explore a Bíblia" desc="Todos os livros, capítulos e versículos." onClick={irParaLivros} />
         <AcessoRapidoCard icon={GraduationCap} tone="violet" titulo="Estudos Avivar" desc="Contexto, ensinamentos e aplicações." onClick={irParaLivros} />
         <AcessoRapidoCard icon={CalendarDays} titulo="Planos de Leitura" desc="Leia a Bíblia em diferentes planos." disabled />
         <AcessoRapidoCard icon={HandHeart} tone="violet" titulo="Oração" desc="Peça oração no site do Ministério." external onClick={() => window.open("https://avivardoespirito.com.br", "_blank", "noopener,noreferrer")} />
         <AcessoRapidoCard icon={StickyNote} titulo="Minha Bíblia" desc="Versículos, anotações e favoritos." onClick={onAnotacoes} />
+        <AcessoRapidoCard icon={HarpIcon} tone="violet" titulo="Harpa Cristã" desc="A história do hinário." onClick={onHarpa} />
+      </div>
+
+      {/* USAR SEM INTERNET */}
+      <div className="max-w-5xl mx-auto px-4 sm:px-6 mt-4">
+        <OfflineCard />
       </div>
 
       {/* LIVROS EM DESTAQUE */}
@@ -893,6 +1736,8 @@ function ReadTab({ book, chapter, setChapter, onAbrirEstudo }) {
   const [noteFor, setNoteFor] = useState(null); // { verseNumber, trecho, color } | null
   const [noteText, setNoteText] = useState("");
   const [speed, setSpeed] = useState(1);
+  const [shareFor, setShareFor] = useState(null); // versículo escolhido para compartilhar
+  const [shareInfo, setShareInfo] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -995,7 +1840,13 @@ function ReadTab({ book, chapter, setChapter, onAbrirEstudo }) {
     setNoteFor(null);
   };
 
-  const shareVerse = async (v) => {
+  const shareVerse = (v) => {
+    setShareInfo("");
+    setShareFor(v);
+  };
+
+  // Opção 1 — cartão em imagem (arte pequena + fundo em cor)
+  const shareCard = async (v) => {
     const reference = `${book.name} ${chapter}:${v.number}`;
     const fallbackTextShare = () => {
       const phrase = CARD_OPENING_PHRASES[Math.floor(Math.random() * CARD_OPENING_PHRASES.length)];
@@ -1007,9 +1858,11 @@ function ReadTab({ book, chapter, setChapter, onAbrirEstudo }) {
       }
     };
     try {
+      setShareInfo("Preparando o cartão...");
       const blob = await generateVerseCard(v.text, reference);
       const file = new File([blob], `versiculo-${book.abbr}-${chapter}-${v.number}.png`, { type: "image/png" });
       if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        setShareFor(null);
         await navigator.share({ files: [file], text: reference });
         return;
       }
@@ -1019,9 +1872,40 @@ function ReadTab({ book, chapter, setChapter, onAbrirEstudo }) {
       a.download = file.name;
       a.click();
       URL.revokeObjectURL(url);
+      setShareFor(null);
       window.open(`https://wa.me/?text=${encodeURIComponent(`Baixei um cartão com este versículo (${reference}). ${CARD_FOOTER}`)}`, "_blank");
     } catch (e) {
+      setShareFor(null);
+      if (e && e.name === "AbortError") return;
       fallbackTextShare();
+    } finally {
+      setShareInfo("");
+    }
+  };
+
+  // Opção 2 — link que abre uma tela com efeito e música para quem recebe
+  const linkDoVersiculo = (v) =>
+    buildShareLink({ ref: `${book.name} ${chapter}:${v.number}`, text: v.text, abbr: book.abbr, chapter, verse: v.number });
+
+  const shareLink = (v) => {
+    const reference = `${book.name} ${chapter}:${v.number}`;
+    const link = linkDoVersiculo(v);
+    const text = `🎵 Uma palavra de Deus para você — ${reference}\n\nToque para abrir (ligue o som):\n${link}`;
+    setShareFor(null);
+    if (navigator.share) {
+      navigator.share({ text }).catch(() => {});
+    } else {
+      window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, "_blank");
+    }
+  };
+
+  const copyLink = async (v) => {
+    const link = linkDoVersiculo(v);
+    try {
+      await navigator.clipboard.writeText(link);
+      setShareInfo("Link copiado! Cole na conversa.");
+    } catch (e) {
+      window.prompt("Copie o link:", link);
     }
   };
 
@@ -1154,6 +2038,31 @@ function ReadTab({ book, chapter, setChapter, onAbrirEstudo }) {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {shareFor && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4" style={{ background: "#00000077" }} onClick={() => setShareFor(null)}>
+          <div className="w-full max-w-sm rounded-2xl p-5" style={{ background: "#fff" }} onClick={(e) => e.stopPropagation()}>
+            <p className="text-xs font-mono" style={{ color: C.stone }}>{book.name} {chapter}:{shareFor.number}</p>
+            <p className="text-sm italic mt-1 mb-4 line-clamp-3" style={{ color: C.ink }}>"{shareFor.text}"</p>
+            <div className="space-y-2">
+              <button onClick={() => shareLink(shareFor)} className="w-full text-left rounded-xl p-3 flex items-center gap-3" style={{ background: "linear-gradient(120deg,#1A1030,#3A2563)", color: "#F3E6B8" }}>
+                <Sparkles size={20} color={C.goldBright} />
+                <span><b className="text-sm block">Enviar com efeito e música</b><span className="text-xs" style={{ color: "#C9C2D8" }}>Quem receber toca no link e vê a mensagem animada, com harpa de fundo.</span></span>
+              </button>
+              <button onClick={() => shareCard(shareFor)} className="w-full text-left rounded-xl p-3 flex items-center gap-3 border" style={{ borderColor: C.gold + "66", background: C.cream, color: C.ink }}>
+                <ImageIcon size={20} color={C.goldDeep} />
+                <span><b className="text-sm block">Enviar como imagem</b><span className="text-xs" style={{ color: C.stone }}>Cartão com fundo colorido, pronto para status e conversas.</span></span>
+              </button>
+              <button onClick={() => copyLink(shareFor)} className="w-full text-left rounded-xl p-3 flex items-center gap-3 border" style={{ borderColor: C.line, background: C.cream, color: C.ink }}>
+                <Link2 size={20} color={C.goldDeep} />
+                <span><b className="text-sm block">Copiar link</b><span className="text-xs" style={{ color: C.stone }}>Para colar onde você quiser.</span></span>
+              </button>
+            </div>
+            {shareInfo && <p className="text-xs mt-3 text-center" style={{ color: C.goldDeep }}>{shareInfo}</p>}
+            <button onClick={() => setShareFor(null)} className="w-full text-center text-xs mt-3 py-1" style={{ color: C.stone }}>Cancelar</button>
+          </div>
         </div>
       )}
 
@@ -1577,15 +2486,47 @@ export default function App() {
   const [gateOpen, setGateOpen] = useState(false);
   const [studies, setStudies] = useState({});
   const [musicaConfig, setMusicaConfig] = useState(DEFAULT_MUSICA);
+  const [hinos, setHinos] = useState([]);
+  const [msgRecebida, setMsgRecebida] = useState(readShareParam); // veio de um link com ?m=
+  const [intro, setIntro] = useState(() => {
+    try {
+      return !readShareParam() && !sessionStorage.getItem("biblia:introVista");
+    } catch (e) {
+      return false;
+    }
+  });
 
   useEffect(() => {
+    // sem internet o carregamento não pode travar: depois de 4s segue com o que tiver
+    const withTimeout = (p, fallback) => Promise.race([p, new Promise((r) => setTimeout(() => r(fallback), 4000))]);
     (async () => {
-      const storedStudies = await loadKey("biblia:studies", null);
+      const storedStudies = await withTimeout(loadKey("biblia:studies", null), null);
       setStudies(storedStudies || SEED_STUDIES);
-      setMusicaConfig(await loadKey("biblia:musicaconfig", DEFAULT_MUSICA));
+      setMusicaConfig(await withTimeout(loadKey("biblia:musicaconfig", DEFAULT_MUSICA), DEFAULT_MUSICA));
+      const h = await withTimeout(loadKey("biblia:harpa", []), []);
+      setHinos(Array.isArray(h) ? h : []);
       setLoading(false);
     })();
   }, []);
+
+  const fecharIntro = () => {
+    try {
+      sessionStorage.setItem("biblia:introVista", "1");
+    } catch (e) {}
+    setIntro(false);
+  };
+  const fecharMensagem = () => {
+    setMsgRecebida(null);
+    try {
+      window.history.replaceState({}, "", "/");
+    } catch (e) {}
+  };
+  const abrirLivro = (b, chapter, tab) => {
+    setActiveBook(b);
+    setInitialChapter(chapter || 1);
+    setInitialTab(tab || "historia");
+    setPage("book");
+  };
 
   const saveStudy = (abbr, v) => {
     setStudies((prev) => {
@@ -1595,6 +2536,11 @@ export default function App() {
     });
   };
 
+  const saveHinos = (lista) => {
+    setHinos(lista);
+    saveKey("biblia:harpa", lista);
+  };
+
   const saveMusicaConfig = (v) => {
     setMusicaConfig(v);
     saveKey("biblia:musicaconfig", v);
@@ -1602,9 +2548,26 @@ export default function App() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center" style={{ background: C.parchment }}>
-        <img src="/logo-icone.png" className="h-10 w-auto animate-pulse" />
+      <div className="min-h-screen flex flex-col items-center justify-center text-center px-6" style={{ background: "radial-gradient(ellipse at 50% 0%, #2B1D4A 0%, #0B0B0C 62%)", color: "#FBF6ED" }}>
+        <img src="/logo-icone.png" alt="Ministério Avivar do Espírito" className="h-16 w-auto animate-pulse" />
+        <p className="text-[11px] font-mono uppercase tracking-[0.3em] mt-5" style={{ color: C.gold }}>Ministério Avivar do Espírito</p>
+        <h1 className="text-3xl font-bold mt-2" style={{ fontFamily: "'Playfair Display', serif", color: "#F3E6B8" }}>Bíblia Avivar</h1>
+        <p className="text-xs mt-2" style={{ color: "#C9C2D8" }}>Bíblia Sagrada · Estudos · Harpa Cristã</p>
       </div>
+    );
+  }
+
+  if (msgRecebida) {
+    return (
+      <ReceberMensagem
+        msg={msgRecebida}
+        onEnter={fecharMensagem}
+        onOpenChapter={(m) => {
+          const b = findBook(m.a);
+          fecharMensagem();
+          if (b) abrirLivro(b, Number(m.c) || 1, "ler");
+        }}
+      />
     );
   }
 
@@ -1615,6 +2578,8 @@ export default function App() {
         .font-body { font-family: 'Public Sans', sans-serif; }
       `}</style>
 
+      {intro && <IntroBoasVindas onEnter={fecharIntro} />}
+
       <NavBar
         onHome={() => setPage("home")}
         onAnotacoes={() => setPage("anotacoes")}
@@ -1624,19 +2589,16 @@ export default function App() {
 
       {page === "home" && (
         <Home
-          onOpenBook={(b, chapter, tab) => {
-            setActiveBook(b);
-            setInitialChapter(chapter || 1);
-            setInitialTab(tab || "historia");
-            setPage("book");
-          }}
+          onOpenBook={abrirLivro}
           onAnotacoes={() => setPage("anotacoes")}
+          onHarpa={() => { setPage("harpa"); window.scrollTo(0, 0); }}
         />
       )}
       {page === "book" && activeBook && (
         <BookView book={activeBook} onBack={() => setPage("home")} studies={studies} saveStudy={saveStudy} adminMode={adminMode} initialChapter={initialChapter} initialTab={initialTab} />
       )}
       {page === "anotacoes" && <AnotacoesPage onBack={() => setPage("home")} />}
+      {page === "harpa" && <HarpaCristaPage onBack={() => setPage("home")} adminMode={adminMode} hinos={hinos} saveHinos={saveHinos} />}
 
       {adminMode && (
         <div className="max-w-5xl mx-auto px-4 sm:px-6">

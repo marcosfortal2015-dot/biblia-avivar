@@ -3,15 +3,42 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Bíblia Avivar</title>
-    <meta name="description" content="Leia a Bíblia Sagrada e explore o estudo de cada livro — Ministério Avivar do Espírito." />
+    <title>Bíblia Avivar — Bíblia Sagrada, Estudos e Harpa Cristã</title>
+    <meta name="description" content="Leia a Bíblia Sagrada, explore o estudo de cada livro e conheça a história da Harpa Cristã — Ministério Avivar do Espírito." />
     <meta name="theme-color" content="#0B0B0C" />
+
+    <!-- Pré-visualização quando o link é enviado por WhatsApp, Telegram, etc. -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Bíblia Avivar" />
+    <meta property="og:title" content="Bíblia Avivar — Uma palavra para você" />
+    <meta property="og:description" content="Bíblia Sagrada, estudos de cada livro e a história da Harpa Cristã. Ministério Avivar do Espírito." />
+    <meta property="og:url" content="https://biblia-avivar.vercel.app/" />
+    <meta property="og:image" content="https://biblia-avivar.vercel.app/og-biblia-avivar.jpg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
+
     <link rel="manifest" href="/manifest.json" />
     <link rel="icon" href="/icon-192.png" />
     <link rel="apple-touch-icon" href="/icon-192.png" />
+    <style>
+      html, body { margin: 0; }
+      #splash { min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 24px; box-sizing: border-box; background: radial-gradient(ellipse at 50% 0%, #2B1D4A 0%, #0B0B0C 62%); color: #FBF6ED; font-family: Georgia, serif; }
+      #splash img { height: 72px; width: auto; }
+      #splash .s1 { margin-top: 20px; font: 11px/1 monospace; letter-spacing: .3em; text-transform: uppercase; color: #CBA135; }
+      #splash h1 { margin: 8px 0 0; font-size: 32px; color: #F3E6B8; }
+      #splash .s2 { margin-top: 10px; font: 12px/1.4 sans-serif; color: #C9C2D8; }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div id="splash">
+        <img src="/logo-icone.png" alt="Ministério Avivar do Espírito" />
+        <div class="s1">Ministério Avivar do Espírito</div>
+        <h1>Bíblia Avivar</h1>
+        <div class="s2">Bíblia Sagrada · Estudos · Harpa Cristã</div>
+      </div>
+    </div>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>
