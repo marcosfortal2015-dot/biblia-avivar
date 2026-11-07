@@ -4,7 +4,7 @@ import {
   BookOpen, Search, Image as ImageIcon, Loader2, AlertCircle,
   Highlighter, Share2, Download, Music, Play, Pause, StickyNote, Trash2, Plus, Volume2, Square,
   GraduationCap, CalendarDays, HandHeart, ExternalLink,
-  Sparkles, WifiOff, CheckCircle2, VolumeX, Link2, Smartphone, MessageCircle,
+  Sparkles, WifiOff, CheckCircle2, VolumeX, Link2, Smartphone, MessageCircle, FileText,
 } from "lucide-react";
 import { storageGet, storageSet } from "./lib/storage.js";
 import { OLD_TESTAMENT, NEW_TESTAMENT, ALL_BOOKS, findBook } from "./lib/bibleData.js";
@@ -865,6 +865,101 @@ function parseHinosLote(txt, formato = "auto") {
   return [];
 }
 
+/* ---------- Harpa Cristã: importar direto do PDF (o arquivo é lido no próprio aparelho) ---------- */
+const HARPA_PDFJS_FONTES = [
+  "https://cdn.jsdelivr.net/npm/pdfjs-dist@6.2.108/build/",
+  "https://unpkg.com/pdfjs-dist@6.2.108/build/",
+  "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/",
+];
+let harpaPdfJsCache = null;
+async function harpaCarregarPdfJs() {
+  if (harpaPdfJsCache) return harpaPdfJsCache;
+  let ultimoErro = null;
+  for (const base of HARPA_PDFJS_FONTES) {
+    try {
+      const url = base + "pdf.min.mjs";
+      const lib = await import(/* @vite-ignore */ url);
+      lib.GlobalWorkerOptions.workerSrc = base + "pdf.worker.min.mjs";
+      harpaPdfJsCache = lib;
+      return lib;
+    } catch (e) { ultimoErro = e; }
+  }
+  throw new Error("Não consegui carregar o leitor de PDF. Confira a internet e tente de novo." + (ultimoErro ? "" : ""));
+}
+// Junta os pedaços de texto de uma página em linhas (pela altura) e devolve as linhas já limpas.
+function harpaLinhasDaPagina(itens) {
+  const ps = itens.filter((it) => it && typeof it.str === "string" && it.transform).map((it) => ({ x: it.transform[4], y: it.transform[5], w: it.width || 0, h: it.height || 8, s: it.str }));
+  ps.sort((a, b) => b.y - a.y || a.x - b.x);
+  const grupos = [];
+  for (const p of ps) {
+    const g = grupos[grupos.length - 1];
+    if (g && Math.abs(g.y - p.y) <= Math.max(2.5, p.h * 0.4)) g.itens.push(p);
+    else grupos.push({ y: p.y, itens: [p] });
+  }
+  return grupos.map((g) => {
+    g.itens.sort((a, b) => a.x - b.x);
+    let txt = ""; let prev = null;
+    for (const it of g.itens) {
+      if (prev && it.x - (prev.x + prev.w) > 1 && !txt.endsWith(" ") && !it.s.startsWith(" ")) txt += " ";
+      txt += it.s; prev = it;
+    }
+    return txt.replace(/\s+$/g, "").replace(/^\s+/g, "");
+  });
+}
+async function harpaLerPdf(arquivo, aoProgresso) {
+  const pdfjs = await harpaCarregarPdfJs();
+  const doc = await pdfjs.getDocument({ data: new Uint8Array(await arquivo.arrayBuffer()) }).promise;
+  const paginas = [];
+  for (let i = 1; i <= doc.numPages; i++) {
+    const pg = await doc.getPage(i);
+    const c = await pg.getTextContent();
+    paginas.push(harpaLinhasDaPagina(c.items));
+    if (aoProgresso) aoProgresso(i, doc.numPages);
+  }
+  return paginas;
+}
+const harpaMaiuscula = (s) => {
+  const l = String(s).replace(/[^A-Za-zÀ-ÿ]/g, "");
+  if (l.length < 3) return false;
+  let up = 0; for (const c of l) if (c === c.toUpperCase() && c !== c.toLowerCase()) up++;
+  return up / l.length >= 0.7;
+};
+// Letras que o PDF leu errado em palavras todas maiúsculas (ex.: "CRElO", "MA!S", "OUEM").
+const harpaCorrigirOcr = (s) => s.replace(/([A-ZÀ-Ú])[!l]([A-ZÀ-Ú])/g, "$1I$2").replace(/\bOU([EAI][A-ZÀ-Ú]*)\b/g, "QU$1");
+const HARPA_MIUDAS = new Set(["de", "da", "do", "das", "dos", "e", "a", "o", "as", "os", "em", "no", "na", "nos", "nas", "ao", "aos", "à", "com", "por", "para", "um", "uma", "que", "ou", "p'ra", "pra", "se"]);
+function harpaTitulo(bruto) {
+  const t = harpaCorrigirOcr(bruto.trim().replace(/\s+/g, " "));
+  return t.toLowerCase().split(" ").map((p, i) => {
+    if (i > 0 && HARPA_MIUDAS.has(p)) return p;
+    return p.replace(/(^|[-'’(])([a-zà-ÿ])/g, (m, a, b) => a + b.toUpperCase());
+  }).join(" ");
+}
+// Recebe as páginas (cada uma = lista de linhas) e devolve [{ numero, titulo, letra }].
+function harpaParsePaginas(paginas) {
+  const indice = []; paginas.forEach((p, i) => { if (p.filter((l) => /\.{5,}/.test(l)).length > 10) indice.push(i); });
+  const ini = indice.length ? indice[indice.length - 1] + 1 : 0;
+  const linhas = [];
+  paginas.slice(ini).forEach((p) => p.forEach((l) => linhas.push(l.replace(/\s+$/g, "").replace(/^\s+/g, ""))));
+  const pos = []; let esperado = 1;
+  linhas.forEach((l, k) => {
+    const m = l.match(/^(\d{1,3})\s*[.\-–]?\s+(\S.*)$/);
+    if (m && Number(m[1]) === esperado && harpaMaiuscula(m[2])) { pos.push({ n: esperado, k, titulo: m[2] }); esperado++; }
+  });
+  if (pos.length < 3) return [];
+  return pos.map((h, i) => {
+    const fim = i + 1 < pos.length ? pos[i + 1].k : linhas.length;
+    const corpo = [];
+    for (let k = h.k + 1; k < fim; k++) {
+      let l = linhas[k];
+      if (harpaMaiuscula(l)) l = harpaCorrigirOcr(l);
+      if (l === "" && (corpo.length === 0 || corpo[corpo.length - 1] === "")) continue;
+      corpo.push(l);
+    }
+    while (corpo.length && corpo[corpo.length - 1] === "") corpo.pop();
+    return { numero: h.n, titulo: harpaTitulo(h.titulo), letra: corpo.join("\n") };
+  }).filter((h) => h.letra);
+}
+
 function HarpaHinos({ hinos, saveHinos, adminMode }) {
   const [busca, setBusca] = useState("");
   const [aberto, setAberto] = useState(null); // número do hino aberto
@@ -873,6 +968,8 @@ function HarpaHinos({ hinos, saveHinos, adminMode }) {
   const [formato, setFormato] = useState("auto");
   const [aviso, setAviso] = useState("");
   const [fonte, setFonte] = useState(17);
+  const [pdfHinos, setPdfHinos] = useState(null);
+  const [pdfEstado, setPdfEstado] = useState("");
 
   const ordenados = useMemo(() => [...hinos].sort((a, b) => a.numero - b.numero), [hinos]);
   const q = semAcento(busca).trim();
@@ -891,7 +988,7 @@ function HarpaHinos({ hinos, saveHinos, adminMode }) {
     setAviso(`Hino ${numero} salvo.`);
   };
   const importar = () => {
-    const novos = parseHinosLote(lote, formato);
+    const novos = pdfHinos || parseHinosLote(lote, formato);
     if (!novos.length) {
       setAviso("Não encontrei hinos nesse formato. Troque o formato acima ou confira se cada hino começa numerado.");
       return;
@@ -899,14 +996,30 @@ function HarpaHinos({ hinos, saveHinos, adminMode }) {
     const nums = new Set(novos.map((h) => h.numero));
     saveHinos([...hinos.filter((h) => !nums.has(h.numero)), ...novos]);
     setLote("");
+    setPdfHinos(null);
+    setPdfEstado("");
     setAviso(`${novos.length} hino(s) importado(s).`);
   };
-  const previaLote = useMemo(() => (lote.trim() ? parseHinosLote(lote, formato) : []), [lote, formato]);
+  const previaLote = useMemo(() => pdfHinos || (lote.trim() ? parseHinosLote(lote, formato) : []), [lote, formato, pdfHinos]);
+  const lerPdf = async (e) => {
+    const f = e.target.files && e.target.files[0];
+    e.target.value = "";
+    if (!f) return;
+    setPdfHinos(null); setLote("");
+    try {
+      setPdfEstado("Lendo o PDF…");
+      const paginas = await harpaLerPdf(f, (i, n) => setPdfEstado(`Lendo página ${i} de ${n}…`));
+      const lista = harpaParsePaginas(paginas);
+      if (!lista.length) { setPdfEstado("Não reconheci hinos nesse PDF. Ele precisa ter cada hino numerado (1., 2., 3.…) com o título em letras maiúsculas."); return; }
+      setPdfHinos(lista);
+      setPdfEstado("");
+    } catch (err) { setPdfEstado(String((err && err.message) || err)); }
+  };
   const lerArquivo = (e) => {
     const f = e.target.files && e.target.files[0];
     if (!f) return;
     const r = new FileReader();
-    r.onload = () => setLote(String(r.result || ""));
+    r.onload = () => { setPdfHinos(null); setLote(String(r.result || "")); };
     r.readAsText(f, "utf-8");
     e.target.value = "";
   };
@@ -978,7 +1091,16 @@ function HarpaHinos({ hinos, saveHinos, adminMode }) {
               <Btn onClick={() => setEdit({ numero: "", titulo: "", letra: "" })}><Plus size={14} /> Cadastrar hino</Btn>
             </div>
           )}
-          <p className="text-xs font-semibold mt-5 mb-1" style={{ color: C.ink }}>Importar vários de uma vez</p>
+          <p className="text-xs font-semibold mt-5 mb-1" style={{ color: C.ink }}>Importar a Harpa Cristã do PDF</p>
+          <p className="text-[11px] mb-2 leading-snug" style={{ color: C.stone }}>Escolha o PDF da Harpa Cristã (com índice e hinos numerados). O arquivo é lido no seu aparelho; confira a contagem abaixo e toque em Importar. Precisa de internet só para abrir o leitor de PDF.</p>
+          <div className="flex flex-wrap items-center gap-2 mb-1">
+            <label className="inline-flex items-center gap-2 rounded-md text-sm font-semibold px-4 py-2 cursor-pointer" style={{ background: C.gold, color: C.ink }}>
+              <FileText size={14} /> Escolher PDF da Harpa
+              <input type="file" accept=".pdf,application/pdf" onChange={lerPdf} className="hidden" />
+            </label>
+            {pdfEstado && <span className="text-xs" style={{ color: C.goldDeep }}>{pdfEstado}</span>}
+          </div>
+          <p className="text-xs font-semibold mt-5 mb-1" style={{ color: C.ink }}>Importar vários de uma vez (texto)</p>
           <p className="text-[11px] mb-2 leading-snug" style={{ color: C.stone }}>Escolha um arquivo de texto (.txt) ou cole o conteúdo abaixo. Se estiver em Word ou PDF, copie o texto e cole aqui. Hinos com o mesmo número são substituídos.</p>
           <div className="flex flex-wrap items-center gap-2 mb-2">
             <label className="inline-flex items-center gap-2 rounded-md text-sm font-semibold px-4 py-2 cursor-pointer" style={{ border: `1px solid ${C.gold}55`, color: C.gold }}>
@@ -990,8 +1112,8 @@ function HarpaHinos({ hinos, saveHinos, adminMode }) {
             </select>
           </div>
           <p className="text-[11px] mb-2 leading-snug" style={{ color: C.stone }}>Atenção: se as estrofes do seu texto também forem numeradas (1., 2., 3.), não use o formato “12. Título”, porque o app pode confundir estrofe com hino novo. Use “###” ou “Número sozinho na linha”. Confira sempre o resumo abaixo antes de importar.</p>
-          <textarea rows={6} value={lote} onChange={(e) => setLote(e.target.value)} placeholder={"### 1 - Título do hino\nTexto do hino...\n\n### 2 - Outro título\nTexto..."} className={inputCls} />
-          {lote.trim() && (
+          <textarea rows={6} value={lote} onChange={(e) => { setPdfHinos(null); setLote(e.target.value); }} placeholder={"### 1 - Título do hino\nTexto do hino...\n\n### 2 - Outro título\nTexto..."} className={inputCls} />
+          {(lote.trim() || pdfHinos) && (
             <p className="text-xs mt-2" style={{ color: previaLote.length ? "#2E7D4F" : "#B03428" }}>
               {previaLote.length
                 ? `Encontrei ${previaLote.length} hino(s): do nº ${previaLote[0].numero} (${previaLote[0].titulo}) ao nº ${previaLote[previaLote.length - 1].numero} (${previaLote[previaLote.length - 1].titulo}).`
