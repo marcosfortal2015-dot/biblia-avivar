@@ -1069,12 +1069,12 @@ function HarpaHinos({ hinos, saveHinos, adminMode }) {
           <b>Os hinos serão publicados aqui.</b> O ministério está cadastrando os textos que tem autorização para divulgar. Enquanto isso, leia a história da Harpa Cristã na aba “História”.
         </div>
       ) : (
-        <div className="mt-5 space-y-2">
-          {lista.length === 0 && <p className="text-sm italic" style={{ color: C.stone }}>Nenhum hino encontrado.</p>}
+        <div className="mt-5 grid grid-cols-2 gap-2">
+          {lista.length === 0 && <p className="col-span-2 text-sm italic" style={{ color: C.stone }}>Nenhum hino encontrado.</p>}
           {lista.map((h) => (
-            <button key={h.numero} onClick={() => { setAviso(""); setAberto(h.numero); window.scrollTo(0, 0); }} className="w-full text-left flex items-center gap-3 rounded-lg border px-4 py-3 focus:outline-none focus:ring-2" style={{ borderColor: C.line, background: C.cream }}>
-              <span className="font-mono text-sm font-bold w-10 shrink-0" style={{ color: C.goldDeep }}>{h.numero}</span>
-              <span className="font-display font-semibold text-[15px]" style={{ fontFamily: "'Playfair Display', serif", color: C.ink }}>{h.titulo}</span>
+            <button key={h.numero} onClick={() => { setAviso(""); setAberto(h.numero); window.scrollTo(0, 0); }} className="w-full min-w-0 text-left flex items-center gap-2 rounded-lg border px-2.5 sm:px-4 py-3 min-h-[56px] focus:outline-none focus:ring-2" style={{ borderColor: C.line, background: C.cream }}>
+              <span className="font-mono text-xs sm:text-sm font-bold w-7 sm:w-10 shrink-0" style={{ color: C.goldDeep }}>{h.numero}</span>
+              <span className="font-display font-semibold text-[13px] sm:text-[15px] leading-tight line-clamp-2 min-w-0" style={{ fontFamily: "'Playfair Display', serif", color: C.ink }}>{h.titulo}</span>
             </button>
           ))}
         </div>
@@ -1618,6 +1618,21 @@ function Home({ onOpenBook, onAnotacoes, onHarpa }) {
             <p className="text-[10px] font-mono uppercase tracking-[0.25em]" style={{ color: C.goldBright }}>Novo · Hinário</p>
             <p className="font-display text-lg font-bold leading-tight" style={{ color: "#F3E6B8", fontFamily: "'Playfair Display', serif" }}>Harpa Cristã</p>
             <p className="text-xs leading-snug" style={{ color: "#C9C2D8" }}>Conheça a história do hinário: como surgiu, quando, quem e onde.</p>
+          </div>
+          <ChevronRight size={20} color={C.goldBright} />
+        </button>
+      </div>
+
+      {/* LOUVOR AVIVAR DO ESPÍRITO — app irmão */}
+      <div className="max-w-5xl mx-auto px-4 sm:px-6 mt-3">
+        <button onClick={() => window.open("https://avivardoespirito.com.br/?app=music", "_blank", "noopener,noreferrer")} className="w-full text-left rounded-2xl p-4 sm:p-5 flex items-center gap-4 focus:outline-none focus:ring-2 transition hover:-translate-y-0.5" style={{ background: "linear-gradient(120deg, #2A0F42 0%, #351052 100%)", border: `1px solid ${C.gold}66` }}>
+          <div className="w-12 h-12 rounded-full flex items-center justify-center shrink-0" style={{ background: "#CBA13525", border: "1px solid #CBA13566" }}>
+            <Music size={26} color={C.goldBright} />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-[10px] font-mono uppercase tracking-[0.25em]" style={{ color: C.goldBright }}>App do Ministério</p>
+            <p className="font-display text-lg font-bold leading-tight" style={{ color: "#F3E6B8", fontFamily: "'Playfair Display', serif" }}>Louvor Avivar do Espírito</p>
+            <p className="text-xs leading-snug" style={{ color: "#C9C2D8" }}>Louvores, cifras, vídeos e aulas. Abre o app do louvor.</p>
           </div>
           <ChevronRight size={20} color={C.goldBright} />
         </button>
@@ -2625,7 +2640,9 @@ export default function App() {
       const storedStudies = await withTimeout(loadKey("biblia:studies", null), null);
       setStudies(storedStudies || SEED_STUDIES);
       setMusicaConfig(await withTimeout(loadKey("biblia:musicaconfig", DEFAULT_MUSICA), DEFAULT_MUSICA));
-      const h = await withTimeout(loadKey("biblia:harpa", []), []);
+      let h = await withTimeout(loadKey("biblia:harpa", []), []);
+      // se a Bíblia ainda não tem hinos próprios, usa a Harpa já importada no Louvor Avivar do Espírito (mesmo banco)
+      if (!Array.isArray(h) || !h.length) h = await withTimeout(loadKey("avivar:harpa", []), []);
       setHinos(Array.isArray(h) ? h : []);
       setLoading(false);
     })();
