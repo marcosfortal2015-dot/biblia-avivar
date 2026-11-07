@@ -616,6 +616,16 @@ const INTRO_ITENS = [
   { icon: WifiOff, titulo: "Leia sem internet", desc: "Instale no celular e leve a Palavra para qualquer lugar." },
 ];
 
+function InstalarLinkIntro() {
+  const { instalado, instalarAgora } = useInstalar();
+  if (instalado) return null;
+  return (
+    <button onClick={(e) => { e.stopPropagation(); instalarAgora(); }} className="intro-up mt-4 inline-flex items-center gap-2 rounded-full px-6 py-2.5 text-sm font-semibold focus:outline-none focus:ring-2" style={{ border: "1px solid #CBA135", color: "#F3E6B8", background: "rgba(255,255,255,.06)", animationDelay: "1.3s" }}>
+      <Smartphone size={16} /> Instalar no celular
+    </button>
+  );
+}
+
 function IntroBoasVindas({ onEnter }) {
   useEffect(() => {
     const t = setTimeout(onEnter, 9000);
@@ -658,6 +668,7 @@ function IntroBoasVindas({ onEnter }) {
         <button onClick={(e) => { e.stopPropagation(); onEnter(); }} className="intro-up mt-8 rounded-full px-10 py-3.5 text-base font-bold focus:outline-none focus:ring-2" style={{ background: "linear-gradient(135deg,#F3D77C,#CBA135)", color: "#2A1B00", animationDelay: "1.3s" }}>
           Entrar
         </button>
+        <InstalarLinkIntro />
         <p className="intro-up text-[11px] mt-3" style={{ color: "#8F86A6", animationDelay: "1.4s" }}>Toque em qualquer lugar para continuar</p>
       </div>
     </div>
@@ -705,39 +716,159 @@ async function prepararOffline() {
   return ok;
 }
 
+/* ---------- Instalar o app no celular (PWA) ---------- */
+// O evento "beforeinstallprompt" é capturado já na abertura do site (e não só quando um card aparece),
+// senão o navegador o dispara antes e o botão nunca aparece.
+const instStore = { evt: null, instalado: false, modal: false, subs: new Set() };
+const instAvisar = () => instStore.subs.forEach((f) => f());
+function instEstaInstalado() {
+  try {
+    return window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true;
+  } catch (e) {
+    return false;
+  }
+}
+if (typeof window !== "undefined") {
+  instStore.instalado = instEstaInstalado();
+  window.addEventListener("beforeinstallprompt", (e) => {
+    e.preventDefault();
+    instStore.evt = e;
+    instAvisar();
+  });
+  window.addEventListener("appinstalled", () => {
+    instStore.instalado = true;
+    instStore.evt = null;
+    instStore.modal = false;
+    instAvisar();
+  });
+}
+function useInstalar() {
+  const [, forcar] = useState(0);
+  useEffect(() => {
+    const f = () => forcar((n) => n + 1);
+    instStore.subs.add(f);
+    return () => instStore.subs.delete(f);
+  }, []);
+  const instalarAgora = async () => {
+    const e = instStore.evt;
+    if (e) {
+      instStore.evt = null; // o navegador só deixa usar o evento uma vez
+      instAvisar();
+      try {
+        e.prompt();
+        await e.userChoice;
+      } catch (err) {
+        instStore.modal = true;
+        instAvisar();
+      }
+      return;
+    }
+    instStore.modal = true; // sem instalação direta (iPhone, WhatsApp/Instagram, etc.): mostra o passo a passo
+    instAvisar();
+  };
+  const fecharModal = () => {
+    instStore.modal = false;
+    instAvisar();
+  };
+  return { instalado: instStore.instalado, nativo: !!instStore.evt, modal: instStore.modal, instalarAgora, fecharModal };
+}
+function instPlataforma() {
+  const ua = (typeof navigator !== "undefined" && navigator.userAgent) || "";
+  const ios = /iPad|iPhone|iPod/.test(ua) || (typeof navigator !== "undefined" && navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  const android = /Android/i.test(ua);
+  const dentroApp = /FBAN|FBAV|FB_IAB|Instagram|WhatsApp|Line\/|Telegram|Snapchat|Twitter|MicroMessenger|TikTok|; wv\)/i.test(ua);
+  return { ios, android, dentroApp };
+}
+
+function InstalarModal() {
+  const { modal, fecharModal } = useInstalar();
+  const [copiado, setCopiado] = useState(false);
+  if (!modal) return null;
+  const { ios, android, dentroApp } = instPlataforma();
+  const link = typeof window !== "undefined" ? window.location.origin + "/" : "https://biblia-avivar.vercel.app/";
+  const copiar = async () => {
+    try {
+      await navigator.clipboard.writeText(link);
+      setCopiado(true);
+      setTimeout(() => setCopiado(false), 2500);
+    } catch (e) {
+      window.prompt("Copie o link e abra no navegador:", link);
+    }
+  };
+  let passos;
+  if (ios) {
+    passos = [
+      dentroApp ? "Você abriu por dentro de outro app (WhatsApp, Instagram, Facebook…). Toque nos três pontinhos ou no ícone de compartilhar e escolha “Abrir no Safari”." : "Use o Safari (o navegador azul com bússola do iPhone).",
+      "Toque no botão Compartilhar (o quadrado com uma seta para cima), na barra de baixo.",
+      "Role a lista e toque em “Adicionar à Tela de Início”.",
+      "Toque em “Adicionar”. O ícone da Bíblia Avivar aparece na tela do seu celular.",
+    ];
+  } else if (android) {
+    passos = [
+      dentroApp ? "Você abriu por dentro de outro app (WhatsApp, Instagram, Facebook…). Toque nos três pontinhos e escolha “Abrir no Chrome” (ou “Abrir no navegador”)." : "Abra este site no Chrome (ou no navegador do seu celular).",
+      "Toque nos três pontinhos ⋮ no canto de cima.",
+      "Toque em “Instalar app” (ou “Adicionar à tela inicial”).",
+      "Confirme em “Instalar”. O ícone da Bíblia Avivar aparece na tela do seu celular.",
+    ];
+  } else {
+    passos = [
+      "No computador, use o Chrome ou o Edge.",
+      "Clique no ícone de instalar (um monitor com uma seta) no lado direito da barra de endereço, ou no menu ⋮ → “Instalar Bíblia Avivar”.",
+      "Confirme em “Instalar”.",
+    ];
+  }
+  return (
+    <div className="fixed inset-0 z-[200] flex items-end sm:items-center justify-center p-3 sm:p-4" style={{ background: "#000000AA" }} onClick={fecharModal}>
+      <div className="w-full max-w-md rounded-2xl p-5 border max-h-[92vh] overflow-y-auto" style={{ background: C.black, borderColor: C.gold + "66", color: "#FBF6ED" }} onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-start gap-3">
+          <img src="/icon-192.png" alt="" className="w-12 h-12 rounded-xl shrink-0" />
+          <div className="flex-1 min-w-0">
+            <h3 className="font-display text-xl font-bold leading-tight" style={{ fontFamily: "'Playfair Display', serif", color: C.goldBright }}>Instalar a Bíblia Avivar</h3>
+            <p className="text-xs mt-1" style={{ color: "#C9C2D8" }}>Fica na tela do celular como um aplicativo, sem precisar de loja.</p>
+          </div>
+          <button onClick={fecharModal} aria-label="Fechar" className="p-1.5 rounded-full" style={{ color: C.gold }}><X size={20} /></button>
+        </div>
+        <ol className="mt-4 space-y-2.5">
+          {passos.map((t, i) => (
+            <li key={i} className="flex gap-3 items-start text-sm leading-snug">
+              <span className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0" style={{ background: C.gold, color: C.black }}>{i + 1}</span>
+              <span style={{ color: "#EDE7F7" }}>{t}</span>
+            </li>
+          ))}
+        </ol>
+        <div className="flex flex-wrap gap-2 mt-5">
+          <Btn onClick={copiar}><Link2 size={14} /> {copiado ? "Link copiado!" : "Copiar link do app"}</Btn>
+          <Btn variant="ghost" onClick={fecharModal}>Fechar</Btn>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function InstalarBanner() {
+  const { instalado, instalarAgora } = useInstalar();
+  if (instalado) return null;
+  return (
+    <div className="max-w-5xl mx-auto px-4 sm:px-6 mt-4">
+      <button onClick={instalarAgora} className="w-full text-left rounded-2xl p-4 sm:p-5 flex items-center gap-4 focus:outline-none focus:ring-2 transition hover:-translate-y-0.5" style={{ background: "linear-gradient(120deg, #3A2A06 0%, #8B6F1F 100%)", border: `1px solid ${C.goldBright}88` }}>
+        <div className="w-12 h-12 rounded-full flex items-center justify-center shrink-0" style={{ background: "#0B0B0C55", border: `1px solid ${C.goldBright}88` }}>
+          <Smartphone size={26} color={C.goldBright} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="font-display text-lg font-bold leading-tight" style={{ color: "#FFF4D0", fontFamily: "'Playfair Display', serif" }}>Instale o app no seu celular</p>
+          <p className="text-xs leading-snug mt-0.5" style={{ color: "#F3E6B8" }}>Toque aqui e a Bíblia Avivar fica na sua tela inicial.</p>
+        </div>
+        <span className="shrink-0 inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-sm font-bold" style={{ background: C.goldBright, color: C.black }}><Download size={15} /> Instalar</span>
+      </button>
+    </div>
+  );
+}
+
 function OfflineCard() {
   const [estado, setEstado] = useState(loadOfflineFlag() ? "pronto" : "ocioso");
   const [data, setData] = useState(loadOfflineFlag());
   const [erro, setErro] = useState("");
-  const [instalador, setInstalador] = useState(null);
-  const [instalado, setInstalado] = useState(() => {
-    try {
-      return window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true;
-    } catch (e) {
-      return false;
-    }
-  });
-  useEffect(() => {
-    const h = (e) => {
-      e.preventDefault();
-      setInstalador(e);
-    };
-    const ok = () => setInstalado(true);
-    window.addEventListener("beforeinstallprompt", h);
-    window.addEventListener("appinstalled", ok);
-    return () => {
-      window.removeEventListener("beforeinstallprompt", h);
-      window.removeEventListener("appinstalled", ok);
-    };
-  }, []);
-  const instalar = async () => {
-    if (!instalador) return;
-    instalador.prompt();
-    try {
-      await instalador.userChoice;
-    } catch (e) {}
-    setInstalador(null);
-  };
+  const { instalado, instalarAgora: instalar } = useInstalar();
   const baixar = async () => {
     setEstado("baixando");
     setErro("");
@@ -765,7 +896,7 @@ function OfflineCard() {
         </p>
         {estado === "erro" && <p className="text-xs mt-1" style={{ color: "#B03428" }}>{erro}</p>}
       </div>
-      {instalador && !instalado && (
+      {!instalado && (
         <Btn variant="ghost" onClick={instalar}><Smartphone size={14} /> Instalar app</Btn>
       )}
       <Btn onClick={baixar} disabled={estado === "baixando"} className="disabled:opacity-60">
@@ -1426,6 +1557,7 @@ function MusicPlayer({ config }) {
 }
 
 function NavBar({ onHome, onAnotacoes, adminMode, onAdminClick }) {
+  const { instalado, instalarAgora } = useInstalar();
   return (
     <header className="sticky top-0 z-40 border-b" style={{ background: C.black, borderColor: C.gold + "55" }}>
       <div className="max-w-5xl mx-auto px-4 sm:px-6 flex items-center justify-between h-16">
@@ -1433,7 +1565,12 @@ function NavBar({ onHome, onAnotacoes, adminMode, onAdminClick }) {
           <img src="/logo-icone.png" alt="Bíblia Avivar" className="h-10 w-auto" />
           <span className="font-display font-semibold text-lg" style={{ color: C.goldBright, fontFamily: "'Playfair Display', serif" }}>Bíblia Avivar</span>
         </button>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3">
+          {!instalado && (
+            <button onClick={instalarAgora} className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-bold focus:outline-none focus:ring-2" style={{ background: C.goldBright, color: C.black }} title="Instalar o app no celular">
+              <Download size={14} /> Instalar
+            </button>
+          )}
           <button onClick={onAnotacoes} className="p-2 rounded-full focus:outline-none focus:ring-2 flex items-center gap-1.5 text-xs font-medium" style={{ color: C.gold }} title="Minhas anotações">
             <StickyNote size={18} /> <span className="hidden sm:inline">Anotações</span>
           </button>
@@ -1607,6 +1744,8 @@ function Home({ onOpenBook, onAnotacoes, onHarpa }) {
           </div>
         </div>
       </div>
+
+      <InstalarBanner />
 
       {/* HARPA CRISTÃ — destaque */}
       <div className="max-w-5xl mx-auto px-4 sm:px-6 mt-4">
@@ -2718,6 +2857,7 @@ export default function App() {
       `}</style>
 
       {intro && <IntroBoasVindas onEnter={fecharIntro} />}
+      <InstalarModal />
 
       <NavBar
         onHome={() => setPage("home")}
