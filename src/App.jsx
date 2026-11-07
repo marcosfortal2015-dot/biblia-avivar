@@ -37,7 +37,7 @@ const BIBLE_API_BASE = "https://www.abibliadigital.com.br/api";
 const BIBLE_API_TOKEN = ""; // <-- cole seu token gratuito aqui (opcional, plano B)
 const BIBLE_VERSION = "nvi";
 
-const MASTER_ADMIN_PASSWORD = "biblia-avivar-2026"; // demo — trocar antes de publicar de verdade
+const MASTER_ADMIN_PASSWORD = "Avivar2026@@"; // senha única do administrador (mesma do site e do Louvor)
 
 const inputCls = "w-full rounded-md border px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2";
 
