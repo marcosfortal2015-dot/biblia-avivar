@@ -13,6 +13,30 @@ const SUPABASE_ANON_KEY = "sb_publishable_TKv2SXrc_3ovC1hGPMdCow_lGP578sv";
 
 const REST_URL = `${SUPABASE_URL}/rest/v1/site_data`;
 
+// Gravar conteúdo da Bíblia exige ser administrador: a senha é conferida no SERVIDOR do site do
+// Ministério (api/privado.js), que guarda a chave secreta do banco. Esta página só recebe uma
+// sessão curta, guardada na memória (recarregar a página = entrar de novo).
+const API_PRIVADO = "https://avivardoespirito.com.br/api/privado";
+let sessao = null;
+export function privateLogout() { sessao = null; }
+export async function privateLogin(codigo) {
+  try {
+    const res = await fetch(API_PRIVADO, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ acao: "login", codigo: String(codigo || "") }),
+    });
+    const r = await res.json().catch(() => ({}));
+    if (res.ok && r && r.ok && r.token && r.papel === "admin") {
+      sessao = { token: r.token };
+      return { ok: true };
+    }
+    return { ok: false, motivo: res.ok && r && r.ok ? "invalido" : (r && r.motivo) || "invalido" };
+  } catch (e) {
+    return { ok: false, motivo: "sem_conexao" };
+  }
+}
+
 function headers(extra = {}) {
   return {
     apikey: SUPABASE_ANON_KEY,
@@ -37,6 +61,27 @@ export async function storageGet(key) {
 }
 
 export async function storageSet(key, value) {
+  try {
+    if (!sessao) return null; // sem login de administrador, nada é gravado
+    const res = await fetch(API_PRIVADO, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${sessao.token}` },
+      body: JSON.stringify({ acao: "setpub", key, value }),
+    });
+    if (res.status === 401) sessao = null; // sessão expirou
+    if (!res.ok) {
+      console.error("Falha ao salvar", key, res.status);
+      return null;
+    }
+    return { key, value, shared: true };
+  } catch (e) {
+    console.error("Falha ao salvar", key, e);
+    return null;
+  }
+}
+
+// (versão antiga, gravava direto no banco com a chave pública — desativada)
+async function _storageSetDireto(key, value) {
   try {
     const url = `${REST_URL}?on_conflict=key`;
     const res = await fetch(url, {

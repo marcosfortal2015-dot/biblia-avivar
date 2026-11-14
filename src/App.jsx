@@ -6,7 +6,7 @@ import {
   GraduationCap, CalendarDays, HandHeart, ExternalLink,
   Sparkles, WifiOff, CheckCircle2, VolumeX, Link2, Smartphone, MessageCircle, FileText,
 } from "lucide-react";
-import { storageGet, storageSet } from "./lib/storage.js";
+import { storageGet, storageSet, privateLogin, privateLogout } from "./lib/storage.js";
 import { OLD_TESTAMENT, NEW_TESTAMENT, ALL_BOOKS, findBook } from "./lib/bibleData.js";
 import { SEED_STUDIES } from "./lib/seedStudies.js";
 import { BOOK_HISTORY } from "./lib/bookHistory.js";
@@ -37,7 +37,7 @@ const BIBLE_API_BASE = "https://www.abibliadigital.com.br/api";
 const BIBLE_API_TOKEN = ""; // <-- cole seu token gratuito aqui (opcional, plano B)
 const BIBLE_VERSION = "nvi";
 
-const MASTER_ADMIN_PASSWORD = "Avivar2026@@"; // senha única do administrador (mesma do site e do Louvor)
+// A senha do administrador não fica mais no código: é conferida no servidor (api/privado.js do site do Ministério).
 
 const inputCls = "w-full rounded-md border px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2";
 
@@ -1587,6 +1587,15 @@ function NavBar({ onHome, onAnotacoes, adminMode, onAdminClick }) {
 function AdminGateModal({ onClose, onSuccess }) {
   const [pw, setPw] = useState("");
   const [err, setErr] = useState("");
+  const [enviando, setEnviando] = useState(false);
+  const entrar = async () => {
+    if (enviando || !pw) return;
+    setEnviando(true); setErr("");
+    const r = await privateLogin(pw);
+    setEnviando(false);
+    if (r.ok) onSuccess();
+    else setErr(r.motivo === "muitas_tentativas" ? "Muitas tentativas. Aguarde alguns minutos." : r.motivo === "sem_conexao" ? "Sem conexão com o servidor. Tente de novo." : "Senha incorreta.");
+  };
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "#00000088" }}>
       <div className="w-full max-w-sm rounded-xl p-6 border" style={{ background: C.black, borderColor: C.gold + "44" }}>
@@ -1594,10 +1603,10 @@ function AdminGateModal({ onClose, onSuccess }) {
           <ShieldCheck size={20} />
           <h3 className="font-semibold text-lg text-white">Acesso administrativo</h3>
         </div>
-        <input type="password" autoFocus placeholder="Senha master" value={pw} onChange={(e) => setPw(e.target.value)} className={inputCls} />
+        <input type="password" autoFocus placeholder="Senha master" value={pw} onChange={(e) => setPw(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") entrar(); }} className={inputCls} />
         {err && <p className="text-xs mt-2" style={{ color: "#F2A6A6" }}>{err}</p>}
         <div className="flex gap-2 mt-4">
-          <Btn onClick={() => (pw === MASTER_ADMIN_PASSWORD ? onSuccess() : setErr("Senha incorreta."))}>Entrar</Btn>
+          <Btn onClick={entrar}>{enviando ? "Verificando…" : "Entrar"}</Btn>
           <Btn variant="ghost" color={C.stone} onClick={onClose}>Cancelar</Btn>
         </div>
       </div>
@@ -2863,7 +2872,7 @@ export default function App() {
         onHome={() => setPage("home")}
         onAnotacoes={() => setPage("anotacoes")}
         adminMode={adminMode}
-        onAdminClick={() => (adminMode ? setAdminMode(false) : setGateOpen(true))}
+        onAdminClick={() => { if (adminMode) { privateLogout(); setAdminMode(false); } else setGateOpen(true); }}
       />
 
       {page === "home" && (
