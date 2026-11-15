@@ -10,6 +10,10 @@ import { storageGet, storageSet, privateLogin, privateLogout } from "./lib/stora
 import { OLD_TESTAMENT, NEW_TESTAMENT, ALL_BOOKS, findBook } from "./lib/bibleData.js";
 import { SEED_STUDIES } from "./lib/seedStudies.js";
 import { BOOK_HISTORY } from "./lib/bookHistory.js";
+import * as BIB from "./lib/biblia.js";
+import { t, useIdioma } from "./lib/i18n.js";
+import { GradeCapitulos, BarraIrVersiculo, CabecalhoLeitura, TextoComPalavras, PalavraBalao, ImersaoPalavra, PainelInterpretacao, SeletorTraducao, SeletorIdioma, nomeLivro } from "./Leitor.jsx";
+import SermoesPage from "./Sermoes.jsx";
 
 /* ---------------------------------------------------------------- */
 /* Tokens — mesma identidade preto e dourado do site principal       */
@@ -1556,7 +1560,7 @@ function MusicPlayer({ config }) {
   );
 }
 
-function NavBar({ onHome, onAnotacoes, adminMode, onAdminClick }) {
+function NavBar({ onHome, onAnotacoes, onSermoes, adminMode, onAdminClick }) {
   const { instalado, instalarAgora } = useInstalar();
   return (
     <header className="sticky top-0 z-40 border-b" style={{ background: C.black, borderColor: C.gold + "55" }}>
@@ -1571,9 +1575,15 @@ function NavBar({ onHome, onAnotacoes, adminMode, onAdminClick }) {
               <Download size={14} /> Instalar
             </button>
           )}
-          <button onClick={onAnotacoes} className="p-2 rounded-full focus:outline-none focus:ring-2 flex items-center gap-1.5 text-xs font-medium" style={{ color: C.gold }} title="Minhas anotações">
-            <StickyNote size={18} /> <span className="hidden sm:inline">Anotações</span>
+          {adminMode && (
+            <button onClick={onSermoes} data-testid="nav-sermoes" className="p-2 rounded-full focus:outline-none focus:ring-2 flex items-center gap-1.5 text-xs font-medium" style={{ color: C.goldBright }} title={t("nav.sermoes", "Sermões")}>
+              <FileText size={18} /> <span className="hidden sm:inline">{t("nav.sermoes", "Sermões")}</span>
+            </button>
+          )}
+          <button onClick={onAnotacoes} className="p-2 rounded-full focus:outline-none focus:ring-2 flex items-center gap-1.5 text-xs font-medium" style={{ color: C.gold }} title={t("nav.anotacoesTitulo", "Minhas anotações")}>
+            <StickyNote size={18} /> <span className="hidden sm:inline">{t("nav.anotacoes", "Anotações")}</span>
           </button>
+          <SeletorIdioma />
           <span className="w-px h-5" style={{ background: C.gold + "33" }} />
           <button onClick={onAdminClick} className="p-2 rounded-full focus:outline-none focus:ring-2" title={adminMode ? "Sair do modo admin" : "Entrar como admin"} style={{ background: adminMode ? C.gold : "transparent", color: adminMode ? C.black : C.gold }}>
             {adminMode ? <ShieldCheck size={18} /> : <Lock size={18} />}
@@ -1964,13 +1974,14 @@ const HIGHLIGHT_COLORS = [
    fundo colorido + contorno, tipo marca-texto físico. Cada marca guarda o
    início/fim do trecho dentro do texto do versículo. Clicar num trecho já
    marcado remove a marcação. */
-function VerseText({ text, verseMarks, onRemoveMark }) {
-  if (!verseMarks || verseMarks.length === 0) return <>{text}</>;
+function VerseText({ text, verseMarks, onRemoveMark, aoPalavra, chave = "v" }) {
+  const T = (str, k) => <TextoComPalavras texto={str} chave={chave + k} aoPalavra={aoPalavra} ativo={!!aoPalavra} />;
+  if (!verseMarks || verseMarks.length === 0) return <>{T(text, "t")}</>;
   const sorted = [...verseMarks].sort((a, b) => a.start - b.start);
   const parts = [];
   let cursor = 0;
   sorted.forEach((m, i) => {
-    if (m.start > cursor) parts.push(<React.Fragment key={`p${i}`}>{text.slice(cursor, m.start)}</React.Fragment>);
+    if (m.start > cursor) parts.push(<React.Fragment key={`p${i}`}>{T(text.slice(cursor, m.start), "a" + i)}</React.Fragment>);
     parts.push(
       <mark
         key={m.id}
@@ -1986,7 +1997,7 @@ function VerseText({ text, verseMarks, onRemoveMark }) {
     );
     cursor = Math.max(cursor, m.end);
   });
-  if (cursor < text.length) parts.push(<React.Fragment key="pend">{text.slice(cursor)}</React.Fragment>);
+  if (cursor < text.length) parts.push(<React.Fragment key="pend">{T(text.slice(cursor), "z")}</React.Fragment>);
   return <>{parts}</>;
 }
 
@@ -2011,8 +2022,37 @@ function DynamicForm({ fields, onSubmit, submitLabel = "Salvar", initial = {} })
   );
 }
 
-function ReadTab({ book, chapter, setChapter, onAbrirEstudo }) {
+// Carrega um capítulo na tradução escolhida. A NVI segue o caminho de sempre (com reserva); as outras vêm do núcleo da Bíblia.
+function fetchChapterTr(tr, abbr, chapter) {
+  if (tr === "nvi") return fetchChapter(abbr, chapter);
+  return BIB.carregarBiblia(tr).then(() => {
+    const ch = BIB.capitulo(tr, abbr, chapter);
+    if (!ch) throw new Error("Capítulo não encontrado");
+    return { verses: ch.map((x) => ({ number: x.n, text: BIB.limparTexto(x.t) })) };
+  });
+}
+
+// Entrada da aba "Ler": sem capítulo escolhido mostra a grade colorida; com capítulo mostra os versículos.
+function ReadTab(props) {
+  const { book, chapter, setChapter } = props;
+  useIdioma();
+  if (chapter == null) {
+    const ul = loadUltimaLeituraLocal() || {};
+    return <GradeCapitulos book={book} ultimo={ul.abbr === book.abbr ? ul.capitulo : null} aoEscolher={(n) => setChapter(n)} aoIrReferencia={(c, v1, v2) => props.aoAbrirTrecho(c, v1, v2)} />;
+  }
+  return <ReadChapter {...props} aoVoltarCapitulos={() => setChapter(null)} />;
+}
+
+function ReadChapter({ book, chapter, setChapter, onAbrirEstudo, tr, setTr, faixaInicial, onIrPara, aoVoltarCapitulos }) {
   const [state, setState] = useState("loading");
+  const [faixa, setFaixa] = useState(faixaInicial || null);
+  const [abrirBarra, setAbrirBarra] = useState(0);
+  const [palavraAtiva, setPalavraAtiva] = useState(null); // { p, rect }
+  const [imersao, setImersao] = useState(null);
+  const verRefs = useRef({});
+  const capAnterior = useRef(chapter);
+  const usaGlossario = BIB.traducaoDe(tr).idioma === "pt";
+  useEffect(() => { if (capAnterior.current !== chapter) { setFaixa(null); capAnterior.current = chapter; } }, [chapter]);
   const [verses, setVerses] = useState([]);
   const [marks, setMarks] = useState({});
   const [activeColor, setActiveColor] = useState(null);
@@ -2031,7 +2071,7 @@ function ReadTab({ book, chapter, setChapter, onAbrirEstudo }) {
     if (window.speechSynthesis) window.speechSynthesis.cancel();
     setSpeaking(false);
     setSpeakingVerse(null);
-    fetchChapter(book.abbr, chapter)
+    fetchChapterTr(tr, book.abbr, chapter)
       .then((data) => {
         if (cancelled) return;
         setVerses(data.verses || []);
@@ -2045,7 +2085,14 @@ function ReadTab({ book, chapter, setChapter, onAbrirEstudo }) {
       cancelled = true;
       if (window.speechSynthesis) window.speechSynthesis.cancel();
     };
-  }, [book.abbr, chapter]);
+  }, [book.abbr, chapter, tr]);
+
+  // ao escolher um trecho (X ou X ao Y), rola até ele
+  useEffect(() => {
+    if (state !== "ok" || !faixa) return;
+    const el = verRefs.current[faixa.v1];
+    if (el && el.scrollIntoView) { try { el.scrollIntoView({ behavior: "smooth", block: "center" }); } catch (e) { /* ok */ } }
+  }, [state, faixa]);
 
   const toggleReading = () => {
     if (!window.speechSynthesis) return;
@@ -2224,7 +2271,8 @@ function ReadTab({ book, chapter, setChapter, onAbrirEstudo }) {
         </button>
         <div className="text-center">
           <p className="font-display text-xl font-bold" style={{ color: C.ink, fontFamily: "'Playfair Display', serif" }}>{book.name} {chapter}</p>
-          <span className="text-xs font-mono" style={{ color: C.stone }}>{chapter} de {book.chapters} capítulos</span>
+          <span className="text-xs font-mono" style={{ color: C.stone }}>{t("leitor.capDe", "{c} de {n} capítulos", { c: chapter, n: book.chapters })}</span>
+          <div><button onClick={aoVoltarCapitulos} data-testid="btn-todos-capitulos" className="mt-1 text-xs font-semibold underline" style={{ color: C.goldDeep }}>{t("leitor.todosCaps", "Ver todos os capítulos")}</button></div>
         </div>
         <button disabled={chapter >= book.chapters} onClick={() => setChapter((c) => c + 1)} className="p-2 rounded-md disabled:opacity-30 focus:outline-none focus:ring-2" style={{ color: C.goldDeep }}>
           <ChevronRight size={18} />
@@ -2238,6 +2286,15 @@ function ReadTab({ book, chapter, setChapter, onAbrirEstudo }) {
           </button>
         </div>
       )}
+
+      {state === "ok" && (
+        <>
+          <CabecalhoLeitura abbr={book.abbr} c={chapter} v1={faixa && faixa.v1} v2={faixa && faixa.v2} total={verses.length} />
+          <BarraIrVersiculo total={verses.length} aoIr={(a, b) => setFaixa({ v1: a, v2: b })} ativa={!!faixa} aoLimpar={() => setFaixa(null)} abrirAgora={abrirBarra} />
+          <PainelInterpretacao tr={tr} abbr={book.abbr} c={chapter} v1={faixa && faixa.v1} v2={faixa && faixa.v2} versiculos={verses.map((v) => ({ n: v.number, t: v.text }))} aoPedirTrecho={() => setAbrirBarra((x) => x + 1)} />
+        </>
+      )}
+      <div className="flex justify-end mb-2"><SeletorTraducao valor={tr} aoMudar={setTr} /></div>
 
       <div className="flex items-center gap-2 flex-wrap mb-2 p-2.5 rounded-lg" style={{ background: C.parchment }}>
         <Highlighter size={15} color={C.stone} />
@@ -2287,8 +2344,10 @@ function ReadTab({ book, chapter, setChapter, onAbrirEstudo }) {
 
       {state === "ok" && (
         <div className="space-y-2.5" style={{ color: "#241F30" }}>
-          {verses.map((v) => (
-            <div key={v.number} className="flex items-start gap-2 group">
+          {verses.map((v) => {
+            const naFaixa = !!faixa && v.number >= faixa.v1 && v.number <= faixa.v2;
+            return (
+            <div key={v.number} className="flex items-start gap-2 group" ref={(el) => { verRefs.current[v.number] = el; }} data-testid={"verso-" + v.number} data-na-faixa={naFaixa ? "1" : "0"}>
               <p
                 onMouseUp={() => createMarkFromSelection(v)}
                 className="flex-1 rounded px-1 -mx-1"
@@ -2296,13 +2355,14 @@ function ReadTab({ book, chapter, setChapter, onAbrirEstudo }) {
                   fontFamily: "'Playfair Display', serif",
                   fontSize: 17,
                   lineHeight: 1.85,
-                  background: speakingVerse === v.number ? C.gold + "33" : "transparent",
-                  boxShadow: speakingVerse === v.number ? `inset 2px 0 0 ${C.gold}` : "none",
+                  background: speakingVerse === v.number ? C.gold + "33" : naFaixa ? C.gold + "2e" : "transparent",
+                  boxShadow: speakingVerse === v.number ? `inset 2px 0 0 ${C.gold}` : naFaixa ? `inset 4px 0 0 ${C.gold}` : "none",
                   cursor: activeColor ? "text" : "default",
+                  opacity: faixa && !naFaixa ? 0.55 : 1,
                 }}
               >
                 <span className="text-xs font-mono align-super mr-1" style={{ color: "#B79A55" }}>{v.number}</span>
-                <VerseText text={v.text} verseMarks={marks[v.number]} onRemoveMark={(markId) => removeMark(v.number, markId)} />
+                <VerseText text={v.text} chave={"v" + v.number} verseMarks={marks[v.number]} onRemoveMark={(markId) => removeMark(v.number, markId)} aoPalavra={usaGlossario ? (p, rect) => setPalavraAtiva({ p, rect }) : undefined} />
               </p>
               <div className="flex flex-col gap-1.5 opacity-60 group-hover:opacity-100 transition shrink-0 pt-1">
                 <button onClick={() => shareVerse(v)} className="p-1" title="Compartilhar versículo">
@@ -2322,9 +2382,13 @@ function ReadTab({ book, chapter, setChapter, onAbrirEstudo }) {
                 )}
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
+
+      {palavraAtiva && <PalavraBalao palavra={palavraAtiva.p} ancora={palavraAtiva.rect} aoFechar={() => setPalavraAtiva(null)} aoImersao={(p) => { setPalavraAtiva(null); setImersao(p); }} />}
+      {imersao && <ImersaoPalavra palavra={imersao} aoVoltar={() => setImersao(null)} aoIrPara={(ab, c, v) => { setImersao(null); onIrPara(ab, c, v); }} />}
 
       {shareFor && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4" style={{ background: "#00000077" }} onClick={() => setShareFor(null)}>
@@ -2677,9 +2741,13 @@ function BookReaderView({ book, onExit }) {
   );
 }
 
-function BookView({ book, onBack, studies, saveStudy, adminMode, initialChapter, initialTab }) {
-  const [tab, setTab] = useState(initialTab || "historia");
-  const [chapter, setChapter] = useState(initialChapter || 1);
+function BookView({ book, onBack, studies, saveStudy, adminMode, initialChapter, initialTab, initialFaixa, onIrPara }) {
+  useIdioma();
+  const [tab, setTab] = useState(initialTab || "ler");
+  const [chapter, setChapter] = useState(initialChapter || null);
+  const [faixaAberta, setFaixaAberta] = useState(initialFaixa || null);
+  const [tr, setTrEstado] = useState(() => { try { const x = localStorage.getItem("biblia:traducao"); return BIB.TRADUCOES.some((y) => y.id === x) ? x : "nvi"; } catch (e) { return "nvi"; } });
+  const setTr = (id) => { setTrEstado(id); try { localStorage.setItem("biblia:traducao", id); } catch (e) { /* ok */ } };
   const [bookMode, setBookMode] = useState(false);
   const study = studies[book.abbr];
 
@@ -2692,26 +2760,26 @@ function BookView({ book, onBack, studies, saveStudy, adminMode, initialChapter,
       <BackButton onClick={onBack} label="Voltar aos livros" />
       <div className="flex items-start justify-between flex-wrap gap-3">
         <div>
-          <Eyebrow>{book.chapters} capítulos</Eyebrow>
-          <h1 className="font-display text-3xl font-bold" style={{ color: C.ink, fontFamily: "'Playfair Display', serif" }}>{book.name}</h1>
+          <Eyebrow>{t("livro.caps", "{n} capítulos", { n: book.chapters })}</Eyebrow>
+          <h1 className="font-display text-3xl font-bold" style={{ color: C.ink, fontFamily: "'Playfair Display', serif" }}>{nomeLivro(book)}</h1>
         </div>
-        <Btn variant="ghost" onClick={() => setBookMode(true)}><BookOpen size={14} /> Ler como livro</Btn>
+        <Btn variant="ghost" onClick={() => setBookMode(true)}><BookOpen size={14} /> {t("livro.comoLivro", "Ler como livro")}</Btn>
       </div>
 
       <div className="flex gap-2 mt-5 mb-6 flex-wrap">
         {[
-          ["historia", "História"],
-          ["ler", "Ler"],
-          ["estudo", "Estudo"],
+          ["ler", t("aba.ler", "Ler")],
+          ["historia", t("aba.historia", "História")],
+          ["estudo", t("aba.estudo", "Estudo")],
         ].map(([k, label]) => (
-          <button key={k} onClick={() => setTab(k)} className="px-4 py-2 rounded-md text-sm font-medium" style={{ background: tab === k ? C.gold : "transparent", color: tab === k ? "#fff" : C.ink, border: `1px solid ${C.gold}55` }}>
+          <button key={k} data-testid={"aba-" + k} onClick={() => setTab(k)} className="px-4 py-2 rounded-md text-sm font-medium" style={{ background: tab === k ? C.gold : "transparent", color: tab === k ? "#fff" : C.ink, border: `1px solid ${C.gold}55` }}>
             {label}
           </button>
         ))}
       </div>
 
       {tab === "historia" && <HistoryTab book={book} />}
-      {tab === "ler" && <ReadTab book={book} chapter={chapter} setChapter={setChapter} onAbrirEstudo={() => setTab("estudo")} />}
+      {tab === "ler" && <ReadTab book={book} chapter={chapter} setChapter={(n) => { setFaixaAberta(null); setChapter(n); }} onAbrirEstudo={() => setTab("estudo")} tr={tr} setTr={setTr} faixaInicial={faixaAberta} onIrPara={onIrPara} aoAbrirTrecho={(c, v1, v2) => { setFaixaAberta(v1 ? { v1, v2: v2 || v1 } : null); setChapter(c); }} />}
       {tab === "estudo" && <StudyTab book={book} study={study} saveStudy={saveStudy} adminMode={adminMode} />}
     </div>
   );
@@ -2762,10 +2830,13 @@ function MusicaAdmin({ config, save }) {
 /* App                                                                */
 /* ---------------------------------------------------------------- */
 export default function App() {
+  useIdioma();
   const [page, setPage] = useState("home");
   const [activeBook, setActiveBook] = useState(null);
-  const [initialChapter, setInitialChapter] = useState(1);
-  const [initialTab, setInitialTab] = useState("historia");
+  const [initialChapter, setInitialChapter] = useState(null);
+  const [initialTab, setInitialTab] = useState("ler");
+  const [initialFaixa, setInitialFaixa] = useState(null);
+  const [nonceLivro, setNonceLivro] = useState(0);
   const [loading, setLoading] = useState(true);
   const [adminMode, setAdminMode] = useState(false);
   const [gateOpen, setGateOpen] = useState(false);
@@ -2808,11 +2879,14 @@ export default function App() {
       window.history.replaceState({}, "", "/");
     } catch (e) {}
   };
-  const abrirLivro = (b, chapter, tab) => {
+  const abrirLivro = (b, chapter, tab, faixa) => {
     setActiveBook(b);
-    setInitialChapter(chapter || 1);
-    setInitialTab(tab || "historia");
+    setInitialChapter(chapter || null);
+    setInitialTab(tab || "ler");
+    setInitialFaixa(faixa || null);
+    setNonceLivro((n) => n + 1);
     setPage("book");
+    try { window.scrollTo(0, 0); } catch (e) { /* ok */ }
   };
 
   const saveStudy = (abbr, v) => {
@@ -2871,6 +2945,7 @@ export default function App() {
       <NavBar
         onHome={() => setPage("home")}
         onAnotacoes={() => setPage("anotacoes")}
+        onSermoes={() => { setPage("sermoes"); window.scrollTo(0, 0); }}
         adminMode={adminMode}
         onAdminClick={() => { if (adminMode) { privateLogout(); setAdminMode(false); } else setGateOpen(true); }}
       />
@@ -2883,9 +2958,11 @@ export default function App() {
         />
       )}
       {page === "book" && activeBook && (
-        <BookView book={activeBook} onBack={() => setPage("home")} studies={studies} saveStudy={saveStudy} adminMode={adminMode} initialChapter={initialChapter} initialTab={initialTab} />
+        <BookView key={activeBook.abbr + ":" + nonceLivro} book={activeBook} onBack={() => setPage("home")} studies={studies} saveStudy={saveStudy} adminMode={adminMode} initialChapter={initialChapter} initialTab={initialTab} initialFaixa={initialFaixa}
+          onIrPara={(ab, c, v) => { const b = findBook(ab); if (b) abrirLivro(b, c, "ler", v ? { v1: v, v2: v } : null); }} />
       )}
       {page === "anotacoes" && <AnotacoesPage onBack={() => setPage("home")} />}
+      {page === "sermoes" && adminMode && <SermoesPage onBack={() => setPage("home")} />}
       {page === "harpa" && <HarpaCristaPage onBack={() => setPage("home")} adminMode={adminMode} hinos={hinos} saveHinos={saveHinos} />}
 
       {adminMode && (

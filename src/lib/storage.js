@@ -19,6 +19,26 @@ const REST_URL = `${SUPABASE_URL}/rest/v1/site_data`;
 const API_PRIVADO = "https://avivardoespirito.com.br/api/privado";
 let sessao = null;
 export function privateLogout() { sessao = null; }
+export const tokenAdmin = () => (sessao ? sessao.token : null);
+// Dados PRIVADOS (ex.: sermões dos pastores): lidos e gravados só pelo servidor do Ministério, com a sessão de administrador.
+export async function privadoGet(key) {
+  if (!sessao) return { ok: false, motivo: "sem_sessao" };
+  try {
+    const res = await fetch(API_PRIVADO, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${sessao.token}` }, body: JSON.stringify({ acao: "get", key }) });
+    const r = await res.json().catch(() => ({}));
+    if (res.status === 401) sessao = null;
+    return res.ok && r && r.ok ? { ok: true, value: r.value } : { ok: false, motivo: (r && r.motivo) || "falha" };
+  } catch (e) { return { ok: false, motivo: "sem_conexao" }; }
+}
+export async function privadoSet(key, value) {
+  if (!sessao) return { ok: false, motivo: "sem_sessao" };
+  try {
+    const res = await fetch(API_PRIVADO, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${sessao.token}` }, body: JSON.stringify({ acao: "set", key, value }) });
+    const r = await res.json().catch(() => ({}));
+    if (res.status === 401) sessao = null;
+    return res.ok && r && r.ok ? { ok: true } : { ok: false, motivo: (r && r.motivo) || "falha" };
+  } catch (e) { return { ok: false, motivo: "sem_conexao" }; }
+}
 export async function privateLogin(codigo) {
   try {
     const res = await fetch(API_PRIVADO, {
