@@ -315,7 +315,7 @@ export function CardGrupo({ g, onClick, alto = 150 }) {
   return (
     <button onClick={onClick} data-testid={"grupo-" + g.id} className="relative overflow-hidden rounded-xl text-left w-full focus:outline-none focus:ring-2 active:scale-[0.98] transition" style={{ height: alto, border: "1.5px solid #D6A84a", boxShadow: "0 5px 16px #0009, inset 0 0 0 1px #ffffff26", background: "#1d0f45" }}>
       {ARTES[g.id]}
-      <img src={`/grupos/${g.id}.jpg`} alt="" onLoad={() => setImagem(true)} onError={() => {}} className="absolute inset-0 w-full h-full object-cover" style={{ opacity: imagem ? 1 : 0 }} />
+      <img src={`/grupos/${g.id}.jpg`} alt="" onLoad={() => setImagem(true)} onError={() => {}} className="absolute inset-0 w-full h-full object-cover" style={{ opacity: imagem ? 1 : 0, objectPosition: "50% 38%", transition: "opacity .4s" }} />
       <span className="absolute inset-x-0 bottom-0 pt-10 pb-2 px-2 text-center" style={{ background: "linear-gradient(180deg, transparent, rgba(22,8,52,.92) 70%)" }}>
         <span className="block font-bold leading-tight text-[16px] sm:text-[18px]" style={{ color: "#fff", fontFamily: serifa, textShadow: "0 2px 6px #000" }}>{t(g.chave, g.nome)}</span>
         <span className="block text-[12px] mt-0.5" style={{ color: "#E8DFFA" }}>({n} {n === 1 ? t("grupo.livro", "livro") : t("grupo.livros", "livros")})</span>

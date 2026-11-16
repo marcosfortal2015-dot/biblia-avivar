@@ -10,6 +10,7 @@ import { storageGet, storageSet, privateLogin, privateLogout } from "./lib/stora
 import { OLD_TESTAMENT, NEW_TESTAMENT, ALL_BOOKS, findBook } from "./lib/bibleData.js";
 import { SEED_STUDIES } from "./lib/seedStudies.js";
 import { BOOK_HISTORY } from "./lib/bookHistory.js";
+import LivroFlip from "./LivroFlip.jsx";
 import * as BIB from "./lib/biblia.js";
 import { t, useIdioma } from "./lib/i18n.js";
 import { GradeCapitulos, BarraIrVersiculo, CabecalhoLeitura, TextoComPalavras, PalavraBalao, ImersaoPalavra, PainelInterpretacao, SeletorTraducao, SeletorIdioma, nomeLivro } from "./Leitor.jsx";
@@ -2250,6 +2251,19 @@ function ReadChapter({ book, chapter, setChapter, onAbrirEstudo, tr, setTr, faix
     try { await navigator.clipboard.writeText(texto); avisar(t("leitor.copiado", "Texto copiado!")); } catch (e) { window.prompt("Copie o texto:", texto); }
   };
 
+  // Voltar: capítulo anterior, e assim sucessivamente (no capítulo 1, vai ao último capítulo do livro anterior)
+  const livroAnterior = (() => { const i = ALL_BOOKS.findIndex((b) => b.abbr === book.abbr); return i > 0 ? ALL_BOOKS[i - 1] : null; })();
+  const temAnterior = chapter > 1 || !!livroAnterior;
+  const voltarCapitulo = () => {
+    if (chapter > 1) setChapter(chapter - 1);
+    else if (livroAnterior && onIrPara) onIrPara(livroAnterior.abbr, livroAnterior.chapters, null);
+    try { window.scrollTo({ top: 0 }); } catch (e) { /* ok */ }
+  };
+  const proximoCapitulo = () => {
+    if (chapter < book.chapters) setChapter(chapter + 1);
+    try { window.scrollTo({ top: 0 }); } catch (e) { /* ok */ }
+  };
+
   const exportChapterPDF = () => {
     const rows = verses
       .map((v) => {
@@ -2369,6 +2383,13 @@ function ReadChapter({ book, chapter, setChapter, onAbrirEstudo, tr, setTr, faix
         </div>
       )}
 
+      {state === "ok" && (
+        <div className="flex items-center justify-between gap-2 mt-6" data-testid="nav-fim-capitulo">
+          <button onClick={voltarCapitulo} disabled={!temAnterior} data-testid="fim-voltar" className="inline-flex items-center gap-1 rounded-full px-4 py-2 text-sm font-bold disabled:opacity-30" style={{ background: "linear-gradient(180deg,#2c1670,#1a0d42)", color: V.ouro, border: "1px solid #CBA135" }}><ChevronLeft size={16} /> {chapter > 1 ? `Capítulo ${chapter - 1}` : "Livro anterior"}</button>
+          {chapter < book.chapters && <button onClick={proximoCapitulo} data-testid="fim-proximo" className="inline-flex items-center gap-1 rounded-full px-4 py-2 text-sm font-bold" style={{ background: "linear-gradient(180deg,#f6d77d,#c99530)", color: "#1a0d42" }}>{`Capítulo ${chapter + 1}`} <ChevronRight size={16} /></button>}
+        </div>
+      )}
+
       {palavraAtiva && <PalavraBalao palavra={palavraAtiva.p} ancora={palavraAtiva.rect} aoFechar={() => setPalavraAtiva(null)} aoImersao={(p) => { setPalavraAtiva(null); setImersao(p); }} />}
       {imersao && <ImersaoPalavra palavra={imersao} aoVoltar={() => setImersao(null)} aoIrPara={(ab, c, v) => { setImersao(null); onIrPara(ab, c, v); }} />}
 
@@ -2456,12 +2477,13 @@ function ReadChapter({ book, chapter, setChapter, onAbrirEstudo, tr, setTr, faix
 
       <div className="fixed bottom-0 inset-x-0 z-40 px-3" style={{ paddingBottom: "max(10px, env(safe-area-inset-bottom))" }}>
         <div className="max-w-3xl mx-auto flex items-center justify-around rounded-2xl px-1 py-1.5" data-testid="barra-ferramentas" style={{ background: "linear-gradient(180deg,#2c1670,#1a0d42)", border: "1.5px solid #CBA135", boxShadow: "0 -4px 18px #000a" }}>
-          <button onClick={() => mudarFonte(-2)} disabled={fonte <= 14} data-testid="fonte-menos" aria-label={t("leitor.fonteMenos", "Diminuir a letra")} className="w-14 h-12 rounded-xl flex items-center justify-center focus:outline-none focus:ring-2 disabled:opacity-40" style={{ color: V.ouro, fontFamily: "'Playfair Display', serif", fontSize: 24 }}>A<sup style={{ fontSize: 13 }}>−</sup></button>
-          <button onClick={() => mudarFonte(2)} disabled={fonte >= 32} data-testid="fonte-mais" aria-label={t("leitor.fonteMais", "Aumentar a letra")} className="w-14 h-12 rounded-xl flex items-center justify-center focus:outline-none focus:ring-2 disabled:opacity-40" style={{ color: V.ouro, fontFamily: "'Playfair Display', serif", fontSize: 24 }}>A<sup style={{ fontSize: 13 }}>+</sup></button>
-          <button onClick={() => toggleReading()} data-testid="btn-ouvir" aria-label={!speaking ? (faixa ? t("leitor.ouvirTrecho", "Ouvir o trecho escolhido") : t("leitor.ouvir", "Ouvir o capítulo")) : pausado ? t("leitor.continuar", "Continuar a leitura") : t("leitor.pausar", "Pausar a leitura")} aria-pressed={speaking && !pausado} className="w-14 h-12 rounded-xl flex items-center justify-center focus:outline-none focus:ring-2">{speaking ? (pausado ? <Play size={26} color={V.ouro} /> : <Pause size={26} color={V.ouro} />) : <Volume2 size={27} color={V.ouro} />}</button>
-          <button onClick={compartilharTrecho} data-testid="btn-compartilhar" aria-label={t("leitor.compartilhar", "Compartilhar")} className="w-14 h-12 rounded-xl flex items-center justify-center focus:outline-none focus:ring-2"><Share2 size={24} color={V.ouro} /></button>
-          <button onClick={copiarTrecho} data-testid="btn-copiar" aria-label={t("leitor.copiar", "Copiar o texto")} className="w-14 h-12 rounded-xl flex items-center justify-center focus:outline-none focus:ring-2"><Copy size={24} color={V.ouro} /></button>
-          <button onClick={() => setMaisAberto((m) => !m)} data-testid="btn-mais" aria-expanded={maisAberto} aria-label={t("leitor.mais", "Mais opções: tradução, velocidade e PDF")} className="w-14 h-12 rounded-xl flex items-center justify-center focus:outline-none focus:ring-2" style={{ background: maisAberto ? "#ffffff1f" : "transparent" }}><SlidersHorizontal size={24} color={V.ouro} /></button>
+          <button onClick={voltarCapitulo} disabled={!temAnterior} data-testid="btn-voltar-cap" aria-label={chapter > 1 ? t("leitor.capAnterior", "Voltar ao capítulo anterior") : t("leitor.livroAnterior", "Voltar ao livro anterior")} className="w-12 h-12 rounded-xl flex items-center justify-center focus:outline-none focus:ring-2 disabled:opacity-30"><ChevronLeft size={28} color={V.ouro} /></button>
+          <button onClick={() => mudarFonte(-2)} disabled={fonte <= 14} data-testid="fonte-menos" aria-label={t("leitor.fonteMenos", "Diminuir a letra")} className="w-12 h-12 rounded-xl flex items-center justify-center focus:outline-none focus:ring-2 disabled:opacity-40" style={{ color: V.ouro, fontFamily: "'Playfair Display', serif", fontSize: 24 }}>A<sup style={{ fontSize: 13 }}>−</sup></button>
+          <button onClick={() => mudarFonte(2)} disabled={fonte >= 32} data-testid="fonte-mais" aria-label={t("leitor.fonteMais", "Aumentar a letra")} className="w-12 h-12 rounded-xl flex items-center justify-center focus:outline-none focus:ring-2 disabled:opacity-40" style={{ color: V.ouro, fontFamily: "'Playfair Display', serif", fontSize: 24 }}>A<sup style={{ fontSize: 13 }}>+</sup></button>
+          <button onClick={() => toggleReading()} data-testid="btn-ouvir" aria-label={!speaking ? (faixa ? t("leitor.ouvirTrecho", "Ouvir o trecho escolhido") : t("leitor.ouvir", "Ouvir o capítulo")) : pausado ? t("leitor.continuar", "Continuar a leitura") : t("leitor.pausar", "Pausar a leitura")} aria-pressed={speaking && !pausado} className="w-12 h-12 rounded-xl flex items-center justify-center focus:outline-none focus:ring-2">{speaking ? (pausado ? <Play size={26} color={V.ouro} /> : <Pause size={26} color={V.ouro} />) : <Volume2 size={27} color={V.ouro} />}</button>
+          <button onClick={compartilharTrecho} data-testid="btn-compartilhar" aria-label={t("leitor.compartilhar", "Compartilhar")} className="w-12 h-12 rounded-xl flex items-center justify-center focus:outline-none focus:ring-2"><Share2 size={24} color={V.ouro} /></button>
+          <button onClick={copiarTrecho} data-testid="btn-copiar" aria-label={t("leitor.copiar", "Copiar o texto")} className="w-12 h-12 rounded-xl flex items-center justify-center focus:outline-none focus:ring-2"><Copy size={24} color={V.ouro} /></button>
+          <button onClick={() => setMaisAberto((m) => !m)} data-testid="btn-mais" aria-expanded={maisAberto} aria-label={t("leitor.mais", "Mais opções: tradução, velocidade e PDF")} className="w-12 h-12 rounded-xl flex items-center justify-center focus:outline-none focus:ring-2" style={{ background: maisAberto ? "#ffffff1f" : "transparent" }}><SlidersHorizontal size={24} color={V.ouro} /></button>
         </div>
       </div>
     </div>
@@ -2532,251 +2554,6 @@ function HistoryTab({ book }) {
   );
 }
 
-/* Modo "livro físico": capa com o histórico numa moldura, depois um
-   capítulo por página, virando com um toque/clique nas bordas. Usa a
-   mesma marcação por trecho e leitura em voz do modo normal. */
-function BookReaderView({ book, onExit }) {
-  const [pageIdx, setPageIdx] = useState(0); // 0 = capa; 1..N = capítulos
-  const [verses, setVerses] = useState([]);
-  const [state, setState] = useState("ok");
-  const [marks, setMarks] = useState({});
-  const [activeColor, setActiveColor] = useState(null);
-  const [flip, setFlip] = useState(null);
-  const [speaking, setSpeaking] = useState(false);
-  const [speakingVerse, setSpeakingVerse] = useState(null);
-  const [noteFor, setNoteFor] = useState(null);
-  const [noteText, setNoteText] = useState("");
-
-  const totalPages = book.chapters + 1;
-  const isCover = pageIdx === 0;
-  const chapterNum = pageIdx;
-  const h = BOOK_HISTORY[book.abbr];
-
-  useEffect(() => {
-    if (window.speechSynthesis) window.speechSynthesis.cancel();
-    setSpeaking(false);
-    setSpeakingVerse(null);
-    if (isCover) {
-      setState("ok");
-      return;
-    }
-    let cancelled = false;
-    setState("loading");
-    setMarks(loadMarksLocal(book.abbr, chapterNum));
-    fetchChapter(book.abbr, chapterNum)
-      .then((data) => {
-        if (cancelled) return;
-        setVerses(data.verses || []);
-        setState("ok");
-        saveUltimaLeituraLocal(book, chapterNum, data.verses || []);
-      })
-      .catch(() => {
-        if (!cancelled) setState("error");
-      });
-    return () => {
-      cancelled = true;
-      if (window.speechSynthesis) window.speechSynthesis.cancel();
-    };
-  }, [pageIdx]);
-
-  const goTo = (newIdx, dir) => {
-    if (newIdx < 0 || newIdx >= totalPages) return;
-    setFlip(dir);
-    setTimeout(() => {
-      setPageIdx(newIdx);
-      setFlip(null);
-    }, 220);
-  };
-
-  const toggleReading = () => {
-    if (!window.speechSynthesis) return;
-    if (speaking) {
-      window.speechSynthesis.cancel();
-      setSpeaking(false);
-      setSpeakingVerse(null);
-      return;
-    }
-    window.speechSynthesis.cancel();
-    const voices = window.speechSynthesis.getVoices();
-    const ptVoice = voices.find((v) => v.lang && v.lang.toLowerCase().startsWith("pt"));
-    let idx = 0;
-    const speakNext = () => {
-      if (idx >= verses.length) {
-        setSpeaking(false);
-        setSpeakingVerse(null);
-        return;
-      }
-      const v = verses[idx];
-      setSpeakingVerse(v.number);
-      const utter = new SpeechSynthesisUtterance(`${v.number}. ${v.text}`);
-      utter.lang = "pt-BR";
-      if (ptVoice) utter.voice = ptVoice;
-      utter.rate = 0.95;
-      utter.onend = () => {
-        idx += 1;
-        speakNext();
-      };
-      utter.onerror = () => {
-        setSpeaking(false);
-        setSpeakingVerse(null);
-      };
-      window.speechSynthesis.speak(utter);
-    };
-    setSpeaking(true);
-    speakNext();
-  };
-
-  const createMarkFromSelection = (v) => {
-    if (!activeColor) return;
-    const sel = window.getSelection();
-    const selectedText = sel ? sel.toString().trim() : "";
-    if (!selectedText) return;
-    const start = v.text.indexOf(selectedText);
-    if (start === -1) {
-      sel.removeAllRanges();
-      return;
-    }
-    const end = start + selectedText.length;
-    setMarks((prev) => {
-      const list = prev[v.number] || [];
-      const next = { ...prev, [v.number]: [...list, { id: uid(), start, end, color: activeColor }] };
-      saveMarksLocal(book.abbr, chapterNum, next);
-      return next;
-    });
-    sel.removeAllRanges();
-  };
-
-  const removeMark = (verseNumber, markId) => {
-    setMarks((prev) => {
-      const next = { ...prev, [verseNumber]: (prev[verseNumber] || []).filter((m) => m.id !== markId) };
-      saveMarksLocal(book.abbr, chapterNum, next);
-      return next;
-    });
-  };
-
-  const saveNoteForMark = () => {
-    if (!noteText.trim() || !noteFor) return;
-    const notes = loadNotesLocal();
-    const next = [
-      { id: uid(), texto: noteText.trim(), referencia: `${book.name} ${chapterNum}:${noteFor.verseNumber}`, trecho: noteFor.trecho, cor: noteFor.color, data: new Date().toISOString() },
-      ...notes,
-    ];
-    saveNotesLocal(next);
-    setNoteText("");
-    setNoteFor(null);
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 flex flex-col" style={{ background: "#2B2620" }}>
-      <div className="flex items-center justify-between p-3 shrink-0" style={{ background: C.black }}>
-        <button onClick={onExit} className="text-sm flex items-center gap-1.5" style={{ color: C.gold }}>
-          <ArrowLeft size={16} /> Sair do modo livro
-        </button>
-        <span className="text-xs font-mono" style={{ color: "#ffffff88" }}>{isCover ? "Capa" : `Capítulo ${chapterNum} de ${book.chapters}`}</span>
-      </div>
-
-      <div className="flex-1 relative flex items-center justify-center p-3 sm:p-8 overflow-hidden">
-        <div
-          className="w-full max-w-2xl h-full rounded-lg shadow-2xl overflow-y-auto relative"
-          style={{
-            background: isCover ? "linear-gradient(160deg, #1F1B2E, #0B0B0C)" : C.cream,
-            border: isCover ? `6px double ${C.gold}` : `1px solid ${C.line}`,
-            padding: isCover ? "36px 28px" : "28px 22px",
-            transform: flip === "next" ? "rotateY(-6deg) scale(0.97)" : flip === "prev" ? "rotateY(6deg) scale(0.97)" : "none",
-            opacity: flip ? 0.5 : 1,
-            transition: "transform 0.22s ease, opacity 0.22s ease",
-          }}
-        >
-          {isCover ? (
-            <div className="h-full flex flex-col justify-center text-center">
-              <p className="text-[11px] font-mono tracking-[0.3em] mb-4" style={{ color: C.gold }}>MINISTÉRIO AVIVAR DO ESPÍRITO</p>
-              <h1 className="font-display text-4xl font-bold mb-6" style={{ color: C.goldBright, fontFamily: "'Playfair Display', serif" }}>{book.name}</h1>
-              {h ? (
-                <div className="text-left mt-2 space-y-3 max-w-md mx-auto">
-                  <p className="text-sm" style={{ color: "#E8E2D0" }}><strong style={{ color: C.gold }}>Autor tradicional:</strong> {h.autor}</p>
-                  <p className="text-sm" style={{ color: "#E8E2D0" }}><strong style={{ color: C.gold }}>Época:</strong> {h.epoca}</p>
-                  <p className="text-sm" style={{ color: "#E8E2D0" }}><strong style={{ color: C.gold }}>Tema:</strong> {h.tema}</p>
-                  <p className="text-sm leading-relaxed mt-4" style={{ color: "#E8E2D0" }}>{h.texto}</p>
-                </div>
-              ) : (
-                <p className="text-sm italic" style={{ color: "#E8E2D0" }}>Histórico deste livro ainda não cadastrado.</p>
-              )}
-              <p className="text-xs font-mono mt-10" style={{ color: "#ffffff66" }}>{book.chapters} capítulos · toque na borda direita pra começar</p>
-            </div>
-          ) : (
-            <div>
-              <div className="flex items-center gap-2 flex-wrap mb-4 pb-3 border-b sticky top-0" style={{ borderColor: C.line, background: C.cream }}>
-                <Highlighter size={14} color={C.stone} />
-                {HIGHLIGHT_COLORS.map((c) => (
-                  <button key={c.key} onClick={() => setActiveColor(activeColor === c.color ? null : c.color)} className="w-5 h-5 rounded-full border-2" style={{ background: c.color, borderColor: activeColor === c.color ? C.ink : "transparent" }} />
-                ))}
-                <div className="flex-1" />
-                <button onClick={toggleReading} className="text-xs flex items-center gap-1" style={{ color: speaking ? "#B03428" : C.goldDeep }}>
-                  {speaking ? <><Square size={12} /> Parar</> : <><Volume2 size={13} /> Ouvir</>}
-                </button>
-              </div>
-              {state === "loading" && (
-                <div className="text-center py-10 text-sm" style={{ color: C.stone }}>
-                  <Loader2 className="animate-spin inline mr-2" size={16} />Carregando...
-                </div>
-              )}
-              {state === "error" && <p className="text-center py-10 text-sm" style={{ color: C.stone }}>Não foi possível carregar este capítulo agora.</p>}
-              {state === "ok" && (
-                <div className="space-y-2" style={{ color: "#2B2620", fontFamily: "Georgia, serif" }}>
-                  {verses.map((v) => (
-                    <div key={v.number} className="flex items-start gap-2 group">
-                      <p
-                        onMouseUp={() => createMarkFromSelection(v)}
-                        className="text-[16px] leading-relaxed flex-1 rounded px-1 -mx-1"
-                        style={{ background: speakingVerse === v.number ? C.gold + "33" : "transparent", cursor: activeColor ? "text" : "default" }}
-                      >
-                        <span className="text-xs font-mono align-super mr-1" style={{ color: C.goldDeep }}>{v.number}</span>
-                        <VerseText text={v.text} verseMarks={marks[v.number]} onRemoveMark={(markId) => removeMark(v.number, markId)} />
-                      </p>
-                      {(marks[v.number] || []).length > 0 && (
-                        <button
-                          onClick={() => {
-                            const last = marks[v.number][marks[v.number].length - 1];
-                            setNoteFor({ verseNumber: v.number, trecho: v.text.slice(last.start, last.end), color: last.color });
-                          }}
-                          className="opacity-40 group-hover:opacity-100 transition p-1 shrink-0"
-                        >
-                          <StickyNote size={13} color={C.stone} />
-                        </button>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-
-        <button onClick={() => goTo(pageIdx - 1, "prev")} disabled={pageIdx === 0} className="absolute left-0 top-0 bottom-0 w-10 sm:w-16 disabled:opacity-0 flex items-center justify-center focus:outline-none">
-          <ChevronLeft size={22} color="#ffffff77" />
-        </button>
-        <button onClick={() => goTo(pageIdx + 1, "next")} disabled={pageIdx === totalPages - 1} className="absolute right-0 top-0 bottom-0 w-10 sm:w-16 disabled:opacity-0 flex items-center justify-center focus:outline-none">
-          <ChevronRight size={22} color="#ffffff77" />
-        </button>
-      </div>
-
-      {noteFor && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4" style={{ background: "#00000088" }}>
-          <div className="w-full max-w-sm rounded-xl p-5" style={{ background: "#fff", borderLeft: `5px solid ${noteFor.color}` }}>
-            <p className="text-xs font-mono mb-1" style={{ color: C.stone }}>{book.name} {chapterNum}:{noteFor.verseNumber}</p>
-            <p className="text-sm italic mb-3" style={{ color: C.ink }}>"{noteFor.trecho}"</p>
-            <textarea autoFocus rows={4} placeholder="O que essa passagem significa pra você?" value={noteText} onChange={(e) => setNoteText(e.target.value)} className={inputCls} />
-            <div className="flex gap-2 mt-3">
-              <Btn onClick={saveNoteForMark}>Salvar observação</Btn>
-              <Btn variant="ghost" color={C.stone} onClick={() => { setNoteFor(null); setNoteText(""); }}>Cancelar</Btn>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
 function BookView({ book, onBack, studies, saveStudy, adminMode, initialChapter, initialTab, initialFaixa, onIrPara, autoOuvir, aoLeitura }) {
   useIdioma();
   const [tab, setTab] = useState(initialTab || "ler");
@@ -2789,12 +2566,24 @@ function BookView({ book, onBack, studies, saveStudy, adminMode, initialChapter,
   useEffect(() => { if (aoLeitura) aoLeitura(tab === "ler" && chapter != null && !bookMode); }, [tab, chapter, bookMode]);
   useEffect(() => () => { if (aoLeitura) aoLeitura(false); }, []);
 
+  const [audioNonce, setAudioNonce] = useState(0); // (os hooks ficam sempre antes de qualquer return)
+
   if (bookMode) {
-    return <BookReaderView book={book} onExit={() => setBookMode(false)} />;
+    return (
+      <LivroFlip
+        book={book}
+        inicio={chapter}
+        historia={BOOK_HISTORY[book.abbr]}
+        carregar={(c) => fetchChapterTr(tr, book.abbr, c)}
+        marcasDe={(c) => loadMarksLocal(book.abbr, c)}
+        Texto={VerseText}
+        aoLer={(c, vs) => saveUltimaLeituraLocal(book, c, vs)}
+        aoSair={() => setBookMode(false)}
+      />
+    );
   }
 
   const trocarCap = (n) => { setFaixaAberta(null); setChapter(n); };
-  const [audioNonce, setAudioNonce] = useState(0);
   const ouvirLivro = () => {
     setTab("ler");
     if (chapter == null) { const ul = loadUltimaLeituraLocal(); setChapter(ul && ul.abbr === book.abbr ? ul.capitulo : 1); }

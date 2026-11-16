@@ -1,0 +1,29 @@
+60 - Bíblia Avivar: botão Voltar, "Ler como livro" em FLIP com música, imagens dos cards
+
+SUBIR NO GITHUB (repositório biblia-avivar), mantendo as pastas:
+  src/App.jsx          (substitui)
+  src/Visual.jsx       (substitui)
+  src/LivroFlip.jsx    (NOVO)
+  public/grupos/*.jpg  (10 imagens novas: lei, hist, poet, pmai, pmen, evan, atos, paul, ger, apoc)
+Este App.jsx já inclui tudo do zip 58 (áudio com pausar e caneta). Pode subir por cima.
+
+POR QUE "LER COMO LIVRO" TRAVAVA
+Foi um erro meu na atualização anterior: um dos controles da tela do livro estava depois da saída antecipada, e o React quebrava ao entrar no modo livro. Corrigido. Além disso, o modo livro foi refeito do zero.
+
+LER COMO LIVRO (FLIP)
+ - Páginas de verdade que viram em 3D. No celular, uma página por vez; no computador/tablet largo, duas páginas abertas como um livro.
+ - Começa pela capa com o histórico do livro. O texto é dividido em páginas do tamanho da tela, sem rolagem.
+ - Virar: toque nas bordas, deslize o dedo, setas do teclado ou os botões ‹ ›.
+ - Música suave de fundo (botão de nota musical). Baixa sozinha quando a leitura em voz está ligada. Lembra se você deixou ligada ou desligada.
+ - Ouvir (alto-falante): lê as páginas abertas e vira a página sozinho.
+ - Lista "Cap." para pular de capítulo; A− / A+ muda o tamanho da letra e o livro se reorganiza.
+ - Os capítulos carregam aos poucos, perto de onde você está, por isso abre rápido.
+ - As marcações de caneta feitas no modo normal aparecem no livro (para marcar, use o modo normal).
+
+BOTÃO VOLTAR NO CAPÍTULO
+ - Barra de baixo: novo botão ‹ à esquerda: volta ao capítulo anterior, de novo e de novo. No capítulo 1, vai ao último capítulo do livro anterior.
+ - No fim do capítulo: botões "Capítulo anterior" e "Capítulo seguinte".
+ - Tudo o que já existia foi mantido.
+
+IMAGENS DOS CARDS
+ - As 10 ilustrações que você gerou entram nos cards dos grupos (Antigo e Novo Testamento), reduzidas para 1200x800 (cerca de 230 KB cada).
