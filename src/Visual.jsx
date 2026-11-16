@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import {
   Menu, Search, Bookmark, Home as HomeIcon, BookOpen, CalendarDays, Headphones, LayoutGrid, X, ChevronRight,
-  ChevronLeft, ChevronDown, Play,
+  ChevronLeft, ChevronDown, Play, WifiOff, Download, Loader2, CheckCircle2,
 } from "lucide-react";
 import { OLD_TESTAMENT, NEW_TESTAMENT } from "./lib/bibleData.js";
 import * as BIB from "./lib/biblia.js";
@@ -91,7 +91,7 @@ export function Cabecalho({ onMenu, onBusca, onMarcadores, onHome, compacto }) {
 /* ------------------------------------------------------------------ */
 /* Menu lateral (o "☰")                                                */
 /* ------------------------------------------------------------------ */
-export function MenuLateral({ aberto, onFechar, itens }) {
+export function MenuLateral({ aberto, onFechar, itens, atualizar }) {
   useIdioma();
   useEffect(() => {
     if (!aberto) return undefined;
@@ -112,6 +112,16 @@ export function MenuLateral({ aberto, onFechar, itens }) {
           </div>
           <button onClick={onFechar} aria-label={t("menu.fechar", "Fechar o menu")} className="p-2 rounded-md focus:outline-none focus:ring-2"><X size={22} color={V.ouro} /></button>
         </div>
+        {atualizar && (
+          <div className="mx-4 mt-3 rounded-xl p-3 flex items-center gap-3" data-testid="menu-atualizar-bloco" style={{ background: "#ffffff12", border: "1px solid #CBA13566" }}>
+            <WifiOff size={20} color={V.ouro} className="shrink-0" />
+            <p className="flex-1 text-[14px] font-semibold leading-tight" style={{ color: "#fff" }}>{t("atualizar.msg", "Leia a Bíblia sem internet")}</p>
+            <button onClick={atualizar.baixar} disabled={atualizar.estado === "baixando"} data-testid="menu-atualizar" className="shrink-0 inline-flex items-center gap-1.5 rounded-full px-3.5 py-2 text-[13px] font-bold disabled:opacity-70 focus:outline-none focus:ring-2" style={{ background: "linear-gradient(180deg,#f6d77d,#c9952f)", color: "#2a1450" }}>
+              {atualizar.estado === "baixando" ? <><Loader2 size={14} className="animate-spin" /> {t("atualizar.baixando", "Baixando…")}</> : <>{atualizar.estado === "pronto" ? <CheckCircle2 size={14} /> : <Download size={14} />} {t("atualizar.botao", "Atualizar")}</>}
+            </button>
+          </div>
+        )}
+        {atualizar && atualizar.estado === "erro" && <p className="mx-4 mt-1.5 text-[11px]" style={{ color: "#ffb4a8" }}>{atualizar.erro}</p>}
         <nav className="flex-1 py-2">
           {itens.filter(Boolean).map((it, i) => it.titulo ? (
             <p key={"t" + i} className="px-4 pt-4 pb-1 text-[10px] font-mono uppercase tracking-[0.2em]" style={{ color: V.ouro2 }}>{it.titulo}</p>
@@ -478,6 +488,47 @@ export function BarraNavLivro({ book, chapter, setChapter, onTrocarLivro }) {
         <ChevronDown size={16} color={V.ouro} className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
       </div>
       <button className={seta} disabled={!!chapter && chapter >= book.chapters} onClick={() => setChapter(chapter ? chapter + 1 : 1)} aria-label={t("leitor.capProximo", "Próximo capítulo")} data-testid="cap-proximo"><ChevronRight size={26} color={V.ouro} /></button>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Balão da abertura: aponta para o menu e já é o botão de Atualizar   */
+/* ------------------------------------------------------------------ */
+export function BalaoAtualizar({ estado, erro, baixar, aoFechar, topo = 112 }) {
+  useIdioma();
+  const [clicou, setClicou] = useState(false);
+  useEffect(() => {
+    if (!clicou || estado !== "pronto") return undefined;
+    const id = setTimeout(aoFechar, 3200);
+    return () => clearTimeout(id);
+  }, [clicou, estado]);
+  useEffect(() => {
+    if (clicou) return undefined;
+    const id = setTimeout(aoFechar, 25000);
+    return () => clearTimeout(id);
+  }, [clicou]);
+  const baixando = clicou && estado === "baixando";
+  const feito = clicou && estado === "pronto";
+  const falhou = clicou && estado === "erro";
+  return (
+    <div className="fixed z-[55] left-3" style={{ top: topo, maxWidth: "min(310px, calc(100vw - 24px))" }} role="status" data-testid="balao-atualizar">
+      <style>{"@keyframes balao-pulso{0%,100%{box-shadow:0 6px 22px #000a,0 0 0 0 #f6d77d99}50%{box-shadow:0 6px 22px #000a,0 0 0 7px #f6d77d00}}"}</style>
+      <span aria-hidden="true" className="absolute block w-4 h-4 rotate-45" style={{ left: 22, top: -7, background: "#f6d77d", borderLeft: "1px solid #8B6F1F", borderTop: "1px solid #8B6F1F" }} />
+      <div className="relative rounded-2xl pl-4 pr-9 py-3" style={{ background: "linear-gradient(180deg,#fbe7a0,#f0c65a)", border: "1.5px solid #8B6F1F", color: "#2a1450", animation: baixando || feito ? "none" : "balao-pulso 2.2s ease-in-out infinite" }}>
+        <button onClick={() => { setClicou(true); baixar(); }} disabled={baixando} data-testid="balao-botao" className="text-left w-full focus:outline-none focus:ring-2 rounded disabled:opacity-80">
+          {baixando ? (
+            <span className="flex items-center gap-2 text-[14px] font-bold"><Loader2 size={16} className="animate-spin shrink-0" /> {t("balao.baixando", "Baixando a Bíblia… aguarde")}</span>
+          ) : feito ? (
+            <span className="flex items-center gap-2 text-[14px] font-bold"><CheckCircle2 size={17} className="shrink-0" color="#1f7a46" /> {t("balao.pronto", "Pronto! Agora você lê sem internet.")}</span>
+          ) : falhou ? (
+            <span className="block text-[13px] font-semibold leading-snug">{erro || t("balao.erro", "Não consegui baixar agora.")} <b>{t("balao.tentar", "Toque para tentar de novo.")}</b></span>
+          ) : (
+            <span className="block text-[14px] leading-snug"><b>{t("balao.linha1", "Clique no menu e em Atualizar.")}</b><br />{t("balao.linha2", "Leia sem precisar de internet.")}</span>
+          )}
+        </button>
+        <button onClick={aoFechar} aria-label={t("menu.fechar", "Fechar")} data-testid="balao-fechar" className="absolute top-1.5 right-1.5 p-1.5 rounded-full focus:outline-none focus:ring-2"><X size={16} color="#5a3d00" /></button>
+      </div>
     </div>
   );
 }

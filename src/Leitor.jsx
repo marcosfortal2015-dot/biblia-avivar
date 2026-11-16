@@ -82,35 +82,65 @@ export function SeletorTraducao({ valor, aoMudar }) {
 }
 
 /* ------------------------- escolha do capítulo ------------------------- */
-export function GradeCapitulos({ book, aoEscolher, aoIrReferencia, ultimo }) {
+export function GradeCapitulos({ book, aoEscolher, aoIrReferencia, ultimo, tr = "nvi" }) {
   useIdioma();
   const lv = BIB.achaLivro(book.abbr);
   const cor = lv ? lv.cor : C.gold;
-  const [atalho, setAtalho] = useState("");
+  const [q, setQ] = useState("");
   const [aviso, setAviso] = useState("");
-  const ir = () => {
-    const r = BIB.lerReferencia(`${lv.sigla} ${atalho}`.replace(/\s+/g, " "));
-    if (!r || !r.c) { setAviso(t("grade.atalhoInvalido", "Não entendi. Exemplos: 3 · 3:16 · 3:16-18")); return; }
-    aoIrReferencia(r.c, r.v1, r.v2);
+  const [achados, setAchados] = useState(null); // null = nada pesquisado ainda
+  const [buscando, setBuscando] = useState(false);
+  const ehReferencia = (x) => /^\d+([:.,]\d+)?(\s*(-|–|a|ao)\s*\d+)?$/i.test(x.trim());
+  const pesquisar = () => {
+    const x = q.trim();
+    setAviso("");
+    if (!x) { setAchados(null); return; }
+    if (ehReferencia(x)) {
+      const r = BIB.lerReferencia(`${lv.sigla} ${x.replace(/\s*(a|ao)\s*/i, "-")}`.replace(/\s+/g, " "));
+      if (!r || !r.c) { setAviso(t("grade.atalhoInvalido", "Não entendi. Exemplos: 3 · 3:16 · 3:16-18")); return; }
+      aoIrReferencia(r.c, r.v1, r.v2);
+      return;
+    }
+    setBuscando(true);
+    BIB.carregarBiblia(tr).then(() => {
+      setAchados(BIB.buscarPalavras(tr, x, { max: 80, livro: book.abbr }) || []);
+    }).catch(() => setAviso(t("grade.buscaOff", "Não consegui pesquisar agora. Confira a internet."))).then(() => setBuscando(false));
   };
   return (
     <div data-testid="grade-capitulos">
-      <p className="text-sm mb-1 font-semibold" style={{ color: C.ink }}>{t("grade.titulo", "Escolha o capítulo")}</p>
-      <p className="text-xs mb-3" style={{ color: C.stone }}>{t("grade.sub", "{n} capítulos em {livro}. Toque em um número para ler.", { n: book.chapters, livro: nomeLivro(book) })}</p>
-      <div className="grid gap-2" style={{ gridTemplateColumns: "repeat(auto-fill,minmax(56px,1fr))" }}>
-        {Array.from({ length: book.chapters }, (_, k) => k + 1).map((n) => (
-          <button key={n} onClick={() => aoEscolher(n)} data-testid={"cap-" + n} aria-label={t("grade.cap", "Capítulo {n}", { n })}
-            className="rounded-xl min-h-[52px] text-lg font-extrabold text-white focus:outline-none focus:ring-2 transition hover:-translate-y-0.5"
-            style={{ background: cor, boxShadow: ultimo === n ? `0 0 0 3px ${C.cream}, 0 0 0 5px ${C.gold}` : "0 1px 2px #0003" }}>{n}</button>
-        ))}
+      <div className="rounded-xl p-2 mb-4 flex items-center gap-2" style={{ background: "#fff", border: `1.5px solid ${C.gold}88` }} data-testid="busca-no-livro">
+        <Search size={18} color={C.goldDeep} className="ml-1 shrink-0" />
+        <input value={q} onChange={(e) => { setQ(e.target.value); setAviso(""); if (!e.target.value.trim()) setAchados(null); }} onKeyDown={(e) => { if (e.key === "Enter") pesquisar(); }} placeholder={t("grade.buscaDica", "Pesquisar: palavra ou 3:16")} aria-label={t("grade.busca", "Pesquisar neste livro")} data-testid="busca-livro-input" className="flex-1 min-w-0 bg-transparent py-2 text-[15px] focus:outline-none" style={{ color: C.ink }} />
+        <button onClick={pesquisar} data-testid="grade-atalho-ir" className="rounded-lg px-3.5 py-2 text-sm font-bold shrink-0" style={{ background: C.gold, color: "#fff" }}>{buscando ? "…" : t("buscar", "Buscar")}</button>
       </div>
-      <div className="mt-5 rounded-xl p-3 flex flex-wrap items-center gap-2" style={{ background: C.parchment, border: `1px solid ${C.gold}44` }}>
-        <Search size={15} color={C.goldDeep} />
-        <span className="text-xs font-semibold" style={{ color: C.goldDeep }}>{t("grade.atalho", "Ir direto:")}</span>
-        <input value={atalho} onChange={(e) => { setAtalho(e.target.value); setAviso(""); }} onKeyDown={(e) => { if (e.key === "Enter") ir(); }} placeholder={t("grade.atalhoDica", "capítulo e versículo, ex.: 3:16")} aria-label={t("grade.atalho", "Ir direto:")} data-testid="grade-atalho" className="flex-1 min-w-[160px] rounded-md border px-2.5 py-1.5 text-sm bg-white" style={{ borderColor: C.line }} />
-        <button onClick={ir} className="rounded-md px-3 py-1.5 text-xs font-bold" style={{ background: C.gold, color: "#fff" }} data-testid="grade-atalho-ir">{t("ir", "Ir")}</button>
-        {aviso && <p className="w-full text-xs" style={{ color: "#B03428" }}>{aviso}</p>}
-      </div>
+      {aviso && <p className="text-xs -mt-2 mb-3" style={{ color: "#B03428" }}>{aviso}</p>}
+
+      {achados ? (
+        <div data-testid="resultados-no-livro">
+          <p className="text-xs mb-2" style={{ color: C.stone }}>{achados.length ? t("grade.achados", "{n} resultado(s) em {livro}", { n: achados.length, livro: nomeLivro(book) }) : t("grade.nada", "Nada encontrado neste livro.")}</p>
+          <div className="space-y-2">
+            {achados.map((r) => (
+              <button key={r.c + ":" + r.v} onClick={() => aoIrReferencia(r.c, r.v, r.v)} className="w-full text-left rounded-lg px-3 py-2 focus:outline-none focus:ring-2" style={{ background: "#fff", border: `1px solid ${C.gold}44` }}>
+                <span className="block text-xs font-bold" style={{ color: C.goldDeep }}>{r.c}:{r.v}</span>
+                <span className="block text-[14px] leading-snug line-clamp-3" style={{ color: C.ink }}>{r.t}</span>
+              </button>
+            ))}
+          </div>
+          <button onClick={() => { setQ(""); setAchados(null); }} className="mt-3 text-xs font-semibold underline" style={{ color: C.goldDeep }}>{t("grade.limpar", "Limpar a pesquisa")}</button>
+        </div>
+      ) : (
+        <>
+          <p className="text-sm mb-1 font-semibold" style={{ color: C.ink }}>{t("grade.titulo", "Escolha o capítulo")}</p>
+          <p className="text-xs mb-3" style={{ color: C.stone }}>{t("grade.sub", "{n} capítulos em {livro}. Toque em um número para ler.", { n: book.chapters, livro: nomeLivro(book) })}</p>
+          <div className="flex flex-wrap gap-x-5 gap-y-2.5" data-testid="corrente-capitulos">
+            {Array.from({ length: book.chapters }, (_, k) => k + 1).map((n) => (
+              <button key={n} onClick={() => aoEscolher(n)} data-testid={"cap-" + n} aria-label={t("grade.cap", "Capítulo {n}", { n })}
+                className="text-[24px] font-extrabold leading-none px-0.5 py-1 focus:outline-none focus:ring-2 rounded hover:underline"
+                style={{ color: cor, textDecorationLine: ultimo === n ? "underline" : "none", textDecorationThickness: 3, textUnderlineOffset: 6, textDecorationColor: C.gold, background: "transparent", border: 0, cursor: "pointer" }}>{n}</button>
+            ))}
+          </div>
+        </>
+      )}
     </div>
   );
 }

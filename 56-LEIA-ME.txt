@@ -1,0 +1,5 @@
+ZIP 56 — Bíblia Avivar, pacote completo e autossuficiente
+Substitui os zips 53 e 55 (traz tudo junto) e corrige o zip 54 aplicado no repositório errado.
+Envie a pasta "src" para o repositório biblia-avivar, sobrescrevendo:
+  src/App.jsx  src/Visual.jsx  src/Leitor.jsx  src/Sermoes.jsx  src/index.css
+Opcional: apague src/styles.css do repositório biblia-avivar (veio do zip 54; a Bíblia não usa esse arquivo).

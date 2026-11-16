@@ -84,6 +84,28 @@ const Area = ({ linhasMin = 4, ...p }) => <textarea rows={linhasMin} {...p} clas
 function msgIA(r) { const m = MOTIVOS_IA[r.motivo] || ["ia.falha", "Não consegui falar com a IA agora."]; return t(m[0], m[1]); }
 
 /* ------------------------- gerador: tipo → temas → sermão ------------------------- */
+// Estado do "motor" de IA do gerador de sermões: ligado quando o servidor tem a chave; senão mostra o passo a passo para conectar.
+function PainelMotorIA({ ligada, aoTestar }) {
+  const cor = ligada ? "#1f7a46" : ligada === false ? "#b36b00" : "#6b6480";
+  const rotulo = ligada ? t("motor.ligado", "Motor de IA conectado e pronto") : ligada === false ? t("motor.desligado", "Motor de IA pronto, aguardando a chave") : t("motor.verificando", "Verificando o motor de IA…");
+  return (
+    <div className="rounded-xl p-3 mb-4" data-testid="painel-motor-ia" style={{ background: ligada ? "#EAF6EE" : "#FFF4E0", border: `1px solid ${cor}55` }}>
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="inline-block w-2.5 h-2.5 rounded-full" style={{ background: cor }} />
+        <p className="text-sm font-bold flex-1" style={{ color: cor }} data-testid={ligada === false ? "gerador-ia-off" : "gerador-ia-status"}>{rotulo}</p>
+        <button onClick={aoTestar} data-testid="motor-testar" className="rounded-full px-3 py-1 text-xs font-bold border" style={{ borderColor: cor + "88", color: cor, background: "#fff" }}>{t("motor.testar", "Testar conexão")}</button>
+      </div>
+      {ligada === false && (
+        <ol className="mt-2 text-[13px] leading-snug list-decimal pl-5 space-y-1" style={{ color: C.ink }}>
+          <li>{t("motor.p1", "Abra a Vercel → projeto do site avivardoespirito → Settings → Environment Variables.")}</li>
+          <li>{t("motor.p2", "Crie a variável")} <b>ANTHROPIC_API_KEY</b> {t("motor.p2b", "com a chave da sua conta Anthropic (console.anthropic.com → API Keys).")}</li>
+          <li>{t("motor.p3", "Faça um novo deploy (Redeploy) e toque em “Testar conexão”. Pronto: os botões de sermão e de interpretação passam a funcionar.")}</li>
+        </ol>
+      )}
+    </div>
+  );
+}
+
 function Gerador({ aoSermao, aoCancelar }) {
   useIdioma();
   const [tipo, setTipo] = useState("familia");
@@ -116,7 +138,7 @@ function Gerador({ aoSermao, aoCancelar }) {
     <div data-testid="gerador-sermao">
       <h2 className="font-display text-2xl font-bold mb-1" style={{ color: C.ink, fontFamily: "'Playfair Display', serif" }}>{t("sermao.novoIA", "Novo sermão com ajuda da IA")}</h2>
       <p className="text-sm mb-4" style={{ color: C.stone }}>{t("sermao.passos", "1) Escolha o tipo · 2) A IA sugere temas com capítulos e versículos · 3) Você escolhe o tema · 4) A IA monta o esboço e você edita.")}</p>
-      {ligada === false && <p className="rounded-lg p-3 mb-4 text-sm" style={{ background: "#FFF4E0", color: C.goldDeep }} data-testid="gerador-ia-off">{t("sermao.iaOff", "A inteligência artificial ainda não foi ativada (falta a chave no servidor). Você já pode criar e editar sermões à mão; a IA entra quando a chave for colocada.")}</p>}
+      <PainelMotorIA ligada={ligada} aoTestar={() => { setLigada(null); iaLigada(true).then(setLigada); }} />
       <p className="text-xs font-bold uppercase tracking-wider mb-1.5" style={{ color: C.goldDeep }}>{t("sermao.tipo", "Tipo de mensagem")}</p>
       <div className="flex flex-wrap gap-2 mb-3">
         {TIPOS.map(([id]) => (
