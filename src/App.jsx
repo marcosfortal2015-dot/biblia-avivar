@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from "react";
 import {
   Menu, X, Lock, ShieldCheck, ChevronLeft, ChevronRight, ArrowLeft,
   BookOpen, Search, Image as ImageIcon, Loader2, AlertCircle,
-  Highlighter, Share2, Download, Music, Play, Pause, StickyNote, Trash2, Plus, Volume2, Square,
+  Highlighter, Eraser, SkipBack, SkipForward, Share2, Download, Music, Play, Pause, StickyNote, Trash2, Plus, Volume2, Square,
   GraduationCap, CalendarDays, HandHeart, ExternalLink,
   Sparkles, WifiOff, CheckCircle2, VolumeX, Link2, Smartphone, MessageCircle, FileText, Copy, SlidersHorizontal, Home as Home_,
 } from "lucide-react";
@@ -1873,6 +1873,8 @@ function VerseText({ text, verseMarks, onRemoveMark, aoPalavra, chave = "v" }) {
         key={m.id}
         onClick={(e) => {
           e.stopPropagation();
+          const sel = window.getSelection && window.getSelection();
+          if (sel && !sel.isCollapsed) return; // arrastou para selecionar (caneta/borracha): não é toque para remover
           onRemoveMark(m.id);
         }}
         title="Toque pra remover a marcação"
@@ -1944,6 +1946,17 @@ function ReadChapter({ book, chapter, setChapter, onAbrirEstudo, tr, setTr, faix
   const [activeColor, setActiveColor] = useState(null);
   const [speaking, setSpeaking] = useState(false);
   const [speakingVerse, setSpeakingVerse] = useState(null);
+  const [pausado, setPausado] = useState(false);
+  const [concluido, setConcluido] = useState(null); // { v1, v2 } quando um trecho escolhido terminou de ser lido
+  const [borracha, setBorracha] = useState(false);
+  const [corUltima, setCorUltima] = useState(HIGHLIGHT_COLORS[0].color);
+  const execId = useRef(0);
+  const idxAtual = useRef(0);
+  const fimAtual = useRef(-1);
+  const versesRef = useRef([]);
+  const faixaRef = useRef(null);
+  const speedRef = useRef(1);
+  const listaRef = useRef(null);
   const [noteFor, setNoteFor] = useState(null); // { verseNumber, trecho, color } | null
   const [noteText, setNoteText] = useState("");
   const [speed, setSpeed] = useState(1);
@@ -1954,6 +1967,7 @@ function ReadChapter({ book, chapter, setChapter, onAbrirEstudo, tr, setTr, faix
   const [maisAberto, setMaisAberto] = useState(false);
   const [aviso, setAviso] = useState("");
   const avisar = (m) => { setAviso(m); setTimeout(() => setAviso(""), 2200); };
+  versesRef.current = verses; faixaRef.current = faixa; speedRef.current = speed;
   const iniciouAuto = useRef(false);
   const continuo = useRef(false); // áudio chamado pelo botão Áudio segue para o próximo capítulo
   const retomar = useRef(false);
@@ -1963,8 +1977,11 @@ function ReadChapter({ book, chapter, setChapter, onAbrirEstudo, tr, setTr, faix
     let cancelled = false;
     setState("loading");
     setMarks(loadMarksLocal(book.abbr, chapter));
+    execId.current++;
     if (window.speechSynthesis) window.speechSynthesis.cancel();
     setSpeaking(false);
+    setPausado(false);
+    setConcluido(null);
     setSpeakingVerse(null);
     fetchChapterTr(tr, book.abbr, chapter)
       .then((data) => {
@@ -1978,6 +1995,7 @@ function ReadChapter({ book, chapter, setChapter, onAbrirEstudo, tr, setTr, faix
       });
     return () => {
       cancelled = true;
+      execId.current++;
       if (window.speechSynthesis) window.speechSynthesis.cancel();
     };
   }, [book.abbr, chapter, tr]);
@@ -1989,74 +2007,144 @@ function ReadChapter({ book, chapter, setChapter, onAbrirEstudo, tr, setTr, faix
     if (el && el.scrollIntoView) { try { el.scrollIntoView({ behavior: "smooth", block: "center" }); } catch (e) { /* ok */ } }
   }, [state, faixa]);
 
-  const toggleReading = (cont) => {
+  // Lê do versículo de índice "inicio" até o de índice "fim" (inclusive) e para.
+  const falarDe = (inicio, fim) => {
     if (!window.speechSynthesis) return;
-    if (speaking) {
-      continuo.current = false;
-      window.speechSynthesis.cancel();
-      setSpeaking(false);
-      setSpeakingVerse(null);
-      return;
-    }
-    continuo.current = cont === true;
+    const meu = ++execId.current;
     window.speechSynthesis.cancel();
-    const voices = window.speechSynthesis.getVoices();
-    const ptVoice = voices.find((v) => v.lang && v.lang.toLowerCase().startsWith("pt"));
-    let idx = 0;
-    const speakNext = () => {
-      if (idx >= verses.length) {
-        setSpeaking(false);
-        setSpeakingVerse(null);
+    const lista = versesRef.current;
+    if (!lista.length) return;
+    const ultimo = Math.max(0, Math.min(fim == null ? lista.length - 1 : fim, lista.length - 1));
+    fimAtual.current = ultimo;
+    const voz = window.speechSynthesis.getVoices().find((v) => v.lang && v.lang.toLowerCase().startsWith("pt"));
+    const seguir = (i) => {
+      if (meu !== execId.current) return;
+      if (i > ultimo) {
+        setSpeaking(false); setPausado(false); setSpeakingVerse(null);
+        const ehTrecho = !continuo.current && ultimo < lista.length - 1 || !!faixaRef.current;
         if (continuo.current && chapter < book.chapters) { retomar.current = true; setChapter(chapter + 1); }
-        else continuo.current = false;
+        else { continuo.current = false; if (ehTrecho) setConcluido({ v1: lista[Math.max(0, Math.min(inicioReal.current, lista.length - 1))].number, v2: lista[ultimo].number }); }
         return;
       }
-      const v = verses[idx];
+      idxAtual.current = i;
+      const v = lista[i];
       setSpeakingVerse(v.number);
-      const utter = new SpeechSynthesisUtterance(`${v.number}. ${v.text}`);
-      utter.lang = "pt-BR";
-      if (ptVoice) utter.voice = ptVoice;
-      utter.rate = speed;
-      utter.onend = () => {
-        idx += 1;
-        speakNext();
-      };
-      utter.onerror = () => {
-        setSpeaking(false);
-        setSpeakingVerse(null);
-      };
-      window.speechSynthesis.speak(utter);
+      const u = new SpeechSynthesisUtterance(`${v.number}. ${v.text}`);
+      u.lang = "pt-BR";
+      if (voz) u.voice = voz;
+      u.rate = speedRef.current;
+      u.onend = () => { if (meu === execId.current) seguir(i + 1); };
+      u.onerror = () => { if (meu === execId.current) { setSpeaking(false); setPausado(false); setSpeakingVerse(null); } };
+      window.speechSynthesis.speak(u);
     };
-    setSpeaking(true);
-    speakNext();
+    inicioReal.current = Math.max(0, Math.min(inicio, lista.length - 1));
+    setConcluido(null); setPausado(false); setSpeaking(true);
+    seguir(inicioReal.current);
+  };
+  const inicioReal = useRef(0);
+  const indiceDe = (n) => Math.max(0, versesRef.current.findIndex((x) => x.number === n));
+
+  // Começa a ler: se a pessoa escolheu um trecho (ex.: 5 a 7), lê só ele e para; senão lê o capítulo todo.
+  const iniciarLeitura = (cont) => {
+    const f = faixaRef.current;
+    if (f) { continuo.current = false; falarDe(indiceDe(f.v1), indiceDe(f.v2)); }
+    else { continuo.current = cont === true; falarDe(0); }
+  };
+  const parar = () => {
+    execId.current++; continuo.current = false;
+    if (window.speechSynthesis) window.speechSynthesis.cancel();
+    setSpeaking(false); setPausado(false); setSpeakingVerse(null); setConcluido(null);
+  };
+  const pausar = () => { execId.current++; if (window.speechSynthesis) window.speechSynthesis.cancel(); setPausado(true); };
+  const continuar = () => falarDe(idxAtual.current, fimAtual.current);
+  const alternarPausa = () => (pausado ? continuar() : pausar());
+  const pularVerso = (d) => {
+    const lista = versesRef.current;
+    const novo = Math.max(0, Math.min(idxAtual.current + d, lista.length - 1));
+    falarDe(novo, fimAtual.current < novo ? lista.length - 1 : fimAtual.current);
+  };
+  const repetirTrecho = () => { const f = faixaRef.current; if (f) { continuo.current = false; falarDe(indiceDe(f.v1), indiceDe(f.v2)); } else falarDe(0); };
+  const lerResto = () => { // depois do trecho: segue até o fim do capítulo
+    const lista = versesRef.current; const c = concluido;
+    continuo.current = false;
+    falarDe(Math.min(indiceDe(c ? c.v2 : 0) + 1, lista.length - 1), lista.length - 1);
+  };
+  const toggleReading = (cont) => {
+    if (!window.speechSynthesis) return;
+    if (speaking) { alternarPausa(); return; }
+    iniciarLeitura(cont);
+  };
+  // toque no número do versículo: 1º toque = início do trecho; 2º toque = fim (para o áudio e para a leitura)
+  const escolherVersiculo = (n) => {
+    const f = faixaRef.current;
+    if (!f || f.v1 !== f.v2) setFaixa({ v1: n, v2: n });
+    else if (f.v1 === n) setFaixa(null);
+    else setFaixa({ v1: Math.min(f.v1, n), v2: Math.max(f.v1, n) });
   };
 
   useEffect(() => {
     if (state !== "ok" || !verses.length) return;
-    if (autoOuvir && !iniciouAuto.current) { iniciouAuto.current = true; toggleReading(true); return; }
-    if (audioNonce && audioNonce !== nonceVisto.current) { nonceVisto.current = audioNonce; if (!speaking) toggleReading(true); return; }
-    if (retomar.current) { retomar.current = false; toggleReading(true); }
+    if (autoOuvir && !iniciouAuto.current) { iniciouAuto.current = true; iniciarLeitura(true); return; }
+    if (audioNonce && audioNonce !== nonceVisto.current) { nonceVisto.current = audioNonce; if (speaking) alternarPausa(); else iniciarLeitura(true); return; }
+    if (retomar.current) { retomar.current = false; continuo.current = true; falarDe(0); }
   }, [autoOuvir, audioNonce, state, verses]);
 
-  const createMarkFromSelection = (v) => {
-    if (!activeColor) return;
+  // Troca o intervalo [s,e) por nada (apagar) ou pela nova cor (marcar), sem deixar marcas sobrepostas.
+  const recortar = (lista, s, e) => {
+    const out = [];
+    lista.forEach((m) => {
+      if (m.end <= s || m.start >= e) { out.push(m); return; }
+      if (m.start < s) out.push({ ...m, end: s });
+      if (m.end > e) out.push({ ...m, id: uid(), start: e });
+    });
+    return out;
+  };
+  const aplicarSelecao = () => {
+    if (!activeColor && !borracha) return;
     const sel = window.getSelection();
-    const selectedText = sel ? sel.toString().trim() : "";
-    if (!selectedText) return;
-    const start = v.text.indexOf(selectedText);
-    if (start === -1) {
-      sel.removeAllRanges();
-      return;
-    }
-    const end = start + selectedText.length;
+    const raiz = listaRef.current;
+    if (!sel || sel.isCollapsed || !sel.rangeCount || !raiz) return;
+    const r = sel.getRangeAt(0);
+    if (!raiz.contains(r.commonAncestorContainer)) return;
+    const alvos = [];
+    raiz.querySelectorAll("[data-vtexto]").forEach((el) => {
+      if (!r.intersectsNode(el)) return;
+      const txt = el.textContent || "";
+      const pos = (no, off) => { const q = document.createRange(); q.selectNodeContents(el); q.setEnd(no, off); return q.toString().length; };
+      let ini = el.contains(r.startContainer) ? pos(r.startContainer, r.startOffset) : 0;
+      let fim = el.contains(r.endContainer) ? pos(r.endContainer, r.endOffset) : txt.length;
+      while (ini < fim && /\s/.test(txt[ini])) ini++;
+      while (fim > ini && /\s/.test(txt[fim - 1])) fim--;
+      if (fim > ini) alvos.push({ n: Number(el.getAttribute("data-vtexto")), ini, fim });
+    });
+    if (!alvos.length) return;
     setMarks((prev) => {
-      const list = prev[v.number] || [];
-      const next = { ...prev, [v.number]: [...list, { id: uid(), start, end, color: activeColor }] };
+      const next = { ...prev };
+      alvos.forEach(({ n, ini, fim }) => {
+        let lista = recortar(prev[n] || [], ini, fim);
+        if (!borracha) lista = [...lista, { id: uid(), start: ini, end: fim, color: activeColor }];
+        next[n] = lista;
+      });
       saveMarksLocal(book.abbr, chapter, next);
       return next;
     });
     sel.removeAllRanges();
   };
+  const aplicarRef = useRef(aplicarSelecao);
+  aplicarRef.current = aplicarSelecao;
+  useEffect(() => {
+    if (!activeColor && !borracha) return undefined;
+    let tm = null;
+    const agendar = (ms) => { clearTimeout(tm); tm = setTimeout(() => aplicarRef.current(), ms); };
+    const aoSel = () => agendar(650); // celular: espera a pessoa terminar de ajustar as alças da seleção
+    const aoSoltar = (e) => { if (e.pointerType === "mouse") agendar(60); };
+    document.addEventListener("selectionchange", aoSel);
+    document.addEventListener("pointerup", aoSoltar);
+    return () => { clearTimeout(tm); document.removeEventListener("selectionchange", aoSel); document.removeEventListener("pointerup", aoSoltar); };
+  }, [activeColor, borracha]);
+  const escolherCor = (c) => { setBorracha(false); setCorUltima(c); setActiveColor(activeColor === c ? null : c); };
+  const alternarCaneta = () => { setBorracha(false); setActiveColor(activeColor ? null : corUltima); };
+  const alternarBorracha = () => { setActiveColor(null); setBorracha((b) => !b); };
 
   const removeMark = (verseNumber, markId) => {
     setMarks((prev) => {
@@ -2184,8 +2272,23 @@ function ReadChapter({ book, chapter, setChapter, onAbrirEstudo, tr, setTr, faix
     printPage(`${book.name} ${chapter} — Bíblia Avivar`, rows);
   };
 
+  const marcando = !!activeColor || borracha;
   return (
     <div>
+      <div className="sticky top-0 z-30 mb-3 pt-1" data-testid="barra-marcacao" style={{ background: "linear-gradient(180deg,#fbf6ea 78%,#fbf6ea00)" }}>
+        <div className="flex items-center justify-center gap-1.5 rounded-xl px-1.5 py-1.5" style={{ background: "linear-gradient(180deg,#2c1670,#1a0d42)", border: "1.5px solid #CBA135", boxShadow: "0 3px 12px #0006" }}>
+          <button onClick={alternarCaneta} data-testid="btn-caneta" aria-pressed={!!activeColor} aria-label="Caneta de marcação" className="inline-flex items-center gap-1 rounded-full px-2.5 h-9 text-[12.5px] font-bold focus:outline-none focus:ring-2" style={{ background: activeColor ? "linear-gradient(180deg,#f6d77d,#c99530)" : "transparent", color: activeColor ? "#1a0d42" : V.ouro, border: "1px solid #CBA135" }}>
+            <Highlighter size={16} /> Marcar
+          </button>
+          {HIGHLIGHT_COLORS.map((c) => (
+            <button key={c.key} onClick={() => escolherCor(c.color)} data-testid={"cor-" + c.key} aria-label={"Marcar em " + c.key} aria-pressed={activeColor === c.color} className="w-7 h-7 rounded-full focus:outline-none focus:ring-2" style={{ background: c.color, border: activeColor === c.color ? "3px solid #fff" : "2px solid #ffffff55", boxShadow: activeColor === c.color ? "0 0 0 2px #CBA135" : "none" }} />
+          ))}
+          <button onClick={alternarBorracha} data-testid="btn-borracha" aria-pressed={borracha} aria-label="Apagar marcação" className="inline-flex items-center gap-1 rounded-full px-2.5 h-9 text-[12.5px] font-bold focus:outline-none focus:ring-2" style={{ background: borracha ? "linear-gradient(180deg,#f6d77d,#c99530)" : "transparent", color: borracha ? "#1a0d42" : V.ouro, border: "1px solid #CBA135" }}>
+            <Eraser size={16} /> Apagar
+          </button>
+        </div>
+        {marcando && <p className="text-center text-[12px] font-semibold mt-1 rounded-md px-2 py-0.5" data-testid="dica-marcacao" style={{ background: "#2c1670", color: "#F3E6B8" }}>{borracha ? "Selecione o trecho que quer apagar (ou toque numa marca)." : "Agora selecione o trecho do versículo que quer marcar."}</p>}
+      </div>
       <div className="text-center mb-2">
         <h2 className="font-bold leading-tight text-[34px] sm:text-[42px]" data-testid="titulo-capitulo" style={{ color: V.tinta, fontFamily: "'Playfair Display', serif" }}>{nomeLivro(book)} {chapter}</h2>
         <span className="text-xs font-mono" style={{ color: C.stone }}>{t("leitor.capDe", "{c} de {n} capítulos", { c: chapter, n: book.chapters })}</span>
@@ -2222,14 +2325,14 @@ function ReadChapter({ book, chapter, setChapter, onAbrirEstudo, tr, setTr, faix
       )}
 
       {state === "ok" && (
-        <div className="space-y-3.5" style={{ color: "#241F30" }}>
+        <div className="space-y-3.5" ref={listaRef} style={{ color: "#241F30" }}>
           {verses.map((v) => {
             const naFaixa = !!faixa && v.number >= faixa.v1 && v.number <= faixa.v2;
             return (
             <div key={v.number} className="flex items-start gap-2.5 group" ref={(el) => { verRefs.current[v.number] = el; }} data-testid={"verso-" + v.number} data-na-faixa={naFaixa ? "1" : "0"}>
-              <span className="shrink-0 inline-flex items-center justify-center rounded-md text-[13px] font-bold text-white" data-testid={"num-" + v.number} style={{ minWidth: 26, height: 26, padding: "0 5px", marginTop: "0.28em", background: "linear-gradient(180deg,#6a35b8,#43207f)", boxShadow: "0 1px 3px #0006", fontFamily: "'Playfair Display', serif" }}>{v.number}</span>
+              <span role="button" tabIndex={0} onClick={() => escolherVersiculo(v.number)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); escolherVersiculo(v.number); } }} aria-label={"Escolher o versículo " + v.number + " para o áudio"} title="Toque em dois números para escolher o trecho do áudio" className="shrink-0 inline-flex items-center justify-center rounded-md text-[13px] font-bold text-white cursor-pointer" data-testid={"num-" + v.number} style={{ minWidth: 26, height: 26, padding: "0 5px", marginTop: "0.28em", background: "linear-gradient(180deg,#6a35b8,#43207f)", boxShadow: "0 1px 3px #0006", fontFamily: "'Playfair Display', serif" }}>{v.number}</span>
               <p
-                onMouseUp={() => createMarkFromSelection(v)}
+                data-vtexto={v.number}
                 className="flex-1 rounded px-1 -mx-1"
                 style={{
                   fontFamily: "'Playfair Display', serif",
@@ -2237,11 +2340,11 @@ function ReadChapter({ book, chapter, setChapter, onAbrirEstudo, tr, setTr, faix
                   lineHeight: 1.6,
                   background: speakingVerse === v.number ? C.gold + "33" : naFaixa ? C.gold + "2e" : "transparent",
                   boxShadow: speakingVerse === v.number ? `inset 2px 0 0 ${C.gold}` : naFaixa ? `inset 4px 0 0 ${C.gold}` : "none",
-                  cursor: activeColor ? "text" : "default",
+                  cursor: marcando ? "text" : "default", userSelect: "text", WebkitUserSelect: "text",
                   opacity: faixa && !naFaixa ? 0.55 : 1,
                 }}
               >
-                <VerseText text={v.text} chave={"v" + v.number} verseMarks={marks[v.number]} onRemoveMark={(markId) => removeMark(v.number, markId)} aoPalavra={usaGlossario ? (p, rect) => setPalavraAtiva({ p, rect }) : undefined} />
+                <VerseText text={v.text} chave={"v" + v.number} verseMarks={marks[v.number]} onRemoveMark={(markId) => removeMark(v.number, markId)} aoPalavra={usaGlossario && !marcando ? (p, rect) => setPalavraAtiva({ p, rect }) : undefined} />
               </p>
               <div className="flex flex-col gap-1.5 opacity-60 group-hover:opacity-100 transition shrink-0 pt-1">
                 <button onClick={() => shareVerse(v)} className="p-1" title="Compartilhar versículo">
@@ -2315,14 +2418,6 @@ function ReadChapter({ book, chapter, setChapter, onAbrirEstudo, tr, setTr, faix
           <div className="max-w-3xl mx-auto rounded-2xl p-3 space-y-3" data-testid="painel-mais" style={{ background: "linear-gradient(180deg,#2c1670,#1a0d42)", border: "1.5px solid #CBA135", boxShadow: "0 -6px 22px #000a", color: "#fff" }}>
             <div className="[&_label]:!text-[#E8DFFA]"><SeletorTraducao valor={tr} aoMudar={setTr} /></div>
             <div className="flex items-center gap-2 flex-wrap">
-              <Highlighter size={16} color={V.ouro} />
-              {HIGHLIGHT_COLORS.map((c) => (
-                <button key={c.key} onClick={() => setActiveColor(activeColor === c.color ? null : c.color)} className="w-7 h-7 rounded-full border-2 focus:outline-none" style={{ background: c.color, borderColor: activeColor === c.color ? "#fff" : "transparent" }} title={`Marcar em ${c.key}`} />
-              ))}
-              {activeColor && <span className="text-xs" style={{ color: "#E8DFFA" }}>selecione o trecho no texto</span>}
-            </div>
-            {activeColor && <p className="text-[11px] italic" style={{ color: "#C9C2D8" }}>Dica: arraste o dedo/mouse sobre a frase que quer marcar (não precisa ser o versículo inteiro).</p>}
-            <div className="flex items-center gap-2 flex-wrap">
               <span className="text-xs" style={{ color: "#C9C2D8" }}>{t("leitor.velocidade", "Velocidade da voz")}</span>
               {[0.75, 1, 1.25, 1.5].map((sp) => (
                 <button key={sp} onClick={() => setSpeed(sp)} className="text-[11px] font-semibold rounded-full px-2.5 py-1" style={{ background: speed === sp ? V.ouro2 : "transparent", color: speed === sp ? "#1a0d42" : "#fff", border: `1px solid ${C.gold}88` }}>{String(sp).replace(".", ",")}x</button>
@@ -2334,14 +2429,39 @@ function ReadChapter({ book, chapter, setChapter, onAbrirEstudo, tr, setTr, faix
         </div>
       )}
 
+      {(speaking || concluido) && !maisAberto && (
+        <div className="fixed inset-x-0 z-40 px-3" data-testid="player-audio" style={{ bottom: "calc(78px + env(safe-area-inset-bottom))" }}>
+          <div className="max-w-3xl mx-auto flex items-center gap-1 rounded-2xl px-2 py-1.5" style={{ background: "linear-gradient(180deg,#2c1670,#1a0d42)", border: "1.5px solid #CBA135", boxShadow: "0 -4px 18px #000a", color: "#fff" }}>
+            <span className="text-[12px] font-semibold flex-1 min-w-0 leading-tight" data-testid="player-estado" style={{ color: "#F3E6B8" }}>
+              {concluido
+                ? (concluido.v1 === concluido.v2 ? `Versículo ${concluido.v1} lido` : `Versículos ${concluido.v1} a ${concluido.v2} lidos`)
+                : `${pausado ? "Pausado" : "Lendo"} · ${book.name} ${chapter}:${speakingVerse || idxAtual.current + 1}${faixa && faixa.v2 > faixa.v1 ? ` (trecho ${faixa.v1}–${faixa.v2})` : ""}`}
+            </span>
+            {concluido ? (
+              <>
+                <button onClick={repetirTrecho} data-testid="audio-repetir" className="rounded-full px-3 h-9 text-[12px] font-bold" style={{ border: "1px solid #CBA135", color: V.ouro }}>Repetir</button>
+                <button onClick={lerResto} data-testid="audio-continuar-resto" className="rounded-full px-3 h-9 text-[12px] font-bold" style={{ background: "linear-gradient(180deg,#f6d77d,#c99530)", color: "#1a0d42" }}>Continuar</button>
+              </>
+            ) : (
+              <>
+                <button onClick={() => pularVerso(-1)} data-testid="audio-anterior" aria-label="Versículo anterior" className="w-10 h-10 rounded-xl flex items-center justify-center"><SkipBack size={20} color={V.ouro} /></button>
+                <button onClick={alternarPausa} data-testid="audio-pausa" aria-label={pausado ? "Continuar" : "Pausar"} className="w-11 h-10 rounded-xl flex items-center justify-center" style={{ background: "linear-gradient(180deg,#f6d77d,#c99530)" }}>{pausado ? <Play size={22} color="#1a0d42" /> : <Pause size={22} color="#1a0d42" />}</button>
+                <button onClick={() => pularVerso(1)} data-testid="audio-proximo" aria-label="Próximo versículo" className="w-10 h-10 rounded-xl flex items-center justify-center"><SkipForward size={20} color={V.ouro} /></button>
+              </>
+            )}
+            <button onClick={parar} data-testid="audio-parar" aria-label="Parar a leitura" className="w-10 h-10 rounded-xl flex items-center justify-center"><Square size={20} color="#ff8a80" /></button>
+          </div>
+        </div>
+      )}
+
       <div className="fixed bottom-0 inset-x-0 z-40 px-3" style={{ paddingBottom: "max(10px, env(safe-area-inset-bottom))" }}>
         <div className="max-w-3xl mx-auto flex items-center justify-around rounded-2xl px-1 py-1.5" data-testid="barra-ferramentas" style={{ background: "linear-gradient(180deg,#2c1670,#1a0d42)", border: "1.5px solid #CBA135", boxShadow: "0 -4px 18px #000a" }}>
           <button onClick={() => mudarFonte(-2)} disabled={fonte <= 14} data-testid="fonte-menos" aria-label={t("leitor.fonteMenos", "Diminuir a letra")} className="w-14 h-12 rounded-xl flex items-center justify-center focus:outline-none focus:ring-2 disabled:opacity-40" style={{ color: V.ouro, fontFamily: "'Playfair Display', serif", fontSize: 24 }}>A<sup style={{ fontSize: 13 }}>−</sup></button>
           <button onClick={() => mudarFonte(2)} disabled={fonte >= 32} data-testid="fonte-mais" aria-label={t("leitor.fonteMais", "Aumentar a letra")} className="w-14 h-12 rounded-xl flex items-center justify-center focus:outline-none focus:ring-2 disabled:opacity-40" style={{ color: V.ouro, fontFamily: "'Playfair Display', serif", fontSize: 24 }}>A<sup style={{ fontSize: 13 }}>+</sup></button>
-          <button onClick={toggleReading} data-testid="btn-ouvir" aria-label={speaking ? t("leitor.parar", "Parar a leitura") : t("leitor.ouvir", "Ouvir o capítulo")} aria-pressed={speaking} className="w-14 h-12 rounded-xl flex items-center justify-center focus:outline-none focus:ring-2">{speaking ? <Square size={24} color="#ff8a80" /> : <Volume2 size={27} color={V.ouro} />}</button>
+          <button onClick={() => toggleReading()} data-testid="btn-ouvir" aria-label={!speaking ? (faixa ? t("leitor.ouvirTrecho", "Ouvir o trecho escolhido") : t("leitor.ouvir", "Ouvir o capítulo")) : pausado ? t("leitor.continuar", "Continuar a leitura") : t("leitor.pausar", "Pausar a leitura")} aria-pressed={speaking && !pausado} className="w-14 h-12 rounded-xl flex items-center justify-center focus:outline-none focus:ring-2">{speaking ? (pausado ? <Play size={26} color={V.ouro} /> : <Pause size={26} color={V.ouro} />) : <Volume2 size={27} color={V.ouro} />}</button>
           <button onClick={compartilharTrecho} data-testid="btn-compartilhar" aria-label={t("leitor.compartilhar", "Compartilhar")} className="w-14 h-12 rounded-xl flex items-center justify-center focus:outline-none focus:ring-2"><Share2 size={24} color={V.ouro} /></button>
           <button onClick={copiarTrecho} data-testid="btn-copiar" aria-label={t("leitor.copiar", "Copiar o texto")} className="w-14 h-12 rounded-xl flex items-center justify-center focus:outline-none focus:ring-2"><Copy size={24} color={V.ouro} /></button>
-          <button onClick={() => setMaisAberto((m) => !m)} data-testid="btn-mais" aria-expanded={maisAberto} aria-label={t("leitor.mais", "Mais opções: tradução, marca-texto, velocidade e PDF")} className="w-14 h-12 rounded-xl flex items-center justify-center focus:outline-none focus:ring-2" style={{ background: maisAberto ? "#ffffff1f" : "transparent" }}><SlidersHorizontal size={24} color={V.ouro} /></button>
+          <button onClick={() => setMaisAberto((m) => !m)} data-testid="btn-mais" aria-expanded={maisAberto} aria-label={t("leitor.mais", "Mais opções: tradução, velocidade e PDF")} className="w-14 h-12 rounded-xl flex items-center justify-center focus:outline-none focus:ring-2" style={{ background: maisAberto ? "#ffffff1f" : "transparent" }}><SlidersHorizontal size={24} color={V.ouro} /></button>
         </div>
       </div>
     </div>

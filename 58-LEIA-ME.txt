@@ -1,0 +1,18 @@
+58 - Bíblia Avivar: áudio com controles + barra de caneta no topo
+
+SUBIR NO GITHUB (repositório biblia-avivar), mantendo a pasta:
+  src/App.jsx
+
+ÁUDIO
+ - Ao tocar em Áudio (botão do livro ou da barra de baixo) aparece o player: ⏮ anterior, ⏸/▶ pausar e continuar, ⏭ próximo, ⏹ parar.
+ - O botão de baixo também vira Pausar/Continuar enquanto lê.
+ - ESCOLHER OS VERSÍCULOS: toque no número de um versículo (início) e depois no número de outro (fim). Ex.: 5 e depois 7.
+   O áudio lê do 5 ao 7 e para, mostrando "Versículos 5 a 7 lidos" com os botões Repetir e Continuar (segue do 8 até o fim do capítulo).
+   Também vale "Ir ao versículo" com "5 a 7". Toque de novo no mesmo número ou em "Capítulo inteiro" para voltar a ler tudo.
+
+CANETA DE MARCAÇÃO
+ - Barra fixa no topo da página do capítulo: Marcar, 4 cores e Apagar.
+ - Toque em Marcar (ou numa cor), depois selecione o trecho no texto (arraste o dedo/mouse). No celular, a marcação é aplicada alguns instantes depois de soltar a seleção.
+ - Apagar: selecione o trecho para tirar a marca (ou toque na marca).
+ - Marca por cima de marca troca a cor sem sobrepor. Fica salva no aparelho.
+ - Com a caneta ligada, o toque nas palavras do glossário fica desligado para não atrapalhar a seleção.
