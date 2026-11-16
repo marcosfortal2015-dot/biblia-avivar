@@ -1,0 +1,37 @@
+BÍBLIA AVIVAR — NOVO VISUAL (zip 53)
+=====================================
+
+O QUE MUDOU (só a aparência; todas as funções continuam)
+- Fundo roxo degradê; cabeçalho com paisagem, livro aberto com chama, menu (☰), busca e anotações.
+- Barra de baixo com 5 abas: Início, Bíblia, Planos, Áudio, Mais.
+- Aba Bíblia: Antigo / Novo Testamento e cards ilustrados dos grupos de livros
+  (Pentateuco, Históricos, Poéticos e Sapienciais, Proféticos Maiores, Proféticos Menores;
+   Evangelhos, Atos, Cartas de Paulo, Cartas Gerais, Apocalipse). Toque no card para ver os livros.
+- Leitura: barra "← Livro ▾  Capítulo ▾ →", título no pergaminho, número do versículo em selo roxo,
+  barra de baixo com A− A+ / ouvir / compartilhar / copiar / mais (tradução, marca-texto, velocidade da voz, PDF).
+- Aba Áudio: escolhe livro e capítulo e começa a ler em voz alta.
+- Aba Planos: página "em breve" (os planos de leitura ainda não existem).
+- Menu ☰: Início, Bíblia, Anotações, Harpa Cristã, Louvor Avivar, Instalar o app, Idioma,
+  e (admin) Sermões e Música de fundo.
+
+COMO INSTALAR (GitHub → repositório biblia-avivar)
+1) Envie a pasta "src" deste zip para o repositório (Add file → Upload files), sobrescrevendo.
+   Arquivos: src/App.jsx, src/Visual.jsx (novo), src/index.css.
+2) ATENÇÃO: o src/App.jsx que está hoje no repositório biblia-avivar é o do SITE (20 mil linhas),
+   não o da Bíblia. Este zip traz o App.jsx correto da Bíblia, já com o visual novo.
+   Sobrescreva mesmo.
+3) Aguarde o Vercel terminar o build. Para ver o novo visual no app instalado, abra o app com
+   internet e atualize (Ctrl+R); se aparecer o aviso de nova versão, toque em atualizar.
+
+IMAGENS DOS CARDS (opcional)
+Os cards usam ilustrações desenhadas em código (vetoriais). Se quiser fotos/artes suas,
+coloque em public/grupos/ arquivos com estes nomes (.jpg, proporção ~4:3):
+  lei.jpg  hist.jpg  poet.jpg  pmai.jpg  pmen.jpg
+  evan.jpg atos.jpg  paul.jpg  ger.jpg   apoc.jpg
+Se o arquivo existir, ele substitui o desenho automaticamente.
+
+LIMITES (ser honesto)
+- Testado em navegador simulado (celular 390 px e desktop), com Bíblia de teste; o build real do
+  Vite/Tailwind 3 e o aparelho físico não puderam ser testados aqui.
+- Os textos novos (menu, abas) já têm português; em inglês/espanhol alguns rótulos novos aparecem em português.
+- Aba Planos é só aviso por enquanto.
