@@ -23,7 +23,7 @@ const MS_VIRADA = 760;
 /* Música de fundo: colchão de acordes lentos + dedilhado suave.   */
 /* Tudo sintetizado no aparelho (sem arquivo), baixo volume.       */
 /* -------------------------------------------------------------- */
-function criarFundoSuave() {
+export function criarFundoSuave() {
   const AC = typeof window !== "undefined" && (window.AudioContext || window.webkitAudioContext);
   if (!AC) return null;
   const ctx = new AC();

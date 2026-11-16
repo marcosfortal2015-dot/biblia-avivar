@@ -10,6 +10,8 @@ import { storageGet, storageSet, privateLogin, privateLogout } from "./lib/stora
 import { OLD_TESTAMENT, NEW_TESTAMENT, ALL_BOOKS, findBook } from "./lib/bibleData.js";
 import { SEED_STUDIES } from "./lib/seedStudies.js";
 import { BOOK_HISTORY } from "./lib/bookHistory.js";
+import HinoFlip from "./HinoFlip.jsx";
+import { dividirEstrofes, corrigirGrafia, lerTituloNumero } from "./lib/hinos.js";
 import LivroFlip from "./LivroFlip.jsx";
 import * as BIB from "./lib/biblia.js";
 import { t, useIdioma } from "./lib/i18n.js";
@@ -931,6 +933,7 @@ const FORMATOS_LOTE = [
   ["marcado", "### 12 - Título  (ou Hino 12 - Título)"],
   ["numerado", "12. Título  (ou 12 - Título, 12) Título)"],
   ["linha", "Número sozinho na linha, título na linha de baixo"],
+  ["titulonumero", "Título - 545  (título, hífen e número na mesma linha; texto embaixo)"],
 ];
 
 function parseHinosLoteComo(txt, formato) {
@@ -973,9 +976,10 @@ function parseHinosLoteComo(txt, formato) {
 }
 
 function parseHinosLote(txt, formato = "auto") {
+  if (formato === "titulonumero") return lerTituloNumero(txt);
   if (formato !== "auto") return parseHinosLoteComo(txt, formato);
-  for (const f of ["marcado", "numerado", "linha"]) {
-    const r = parseHinosLoteComo(txt, f);
+  for (const f of ["marcado", "titulonumero", "numerado", "linha"]) {
+    const r = f === "titulonumero" ? lerTituloNumero(txt) : parseHinosLoteComo(txt, f);
     if (r.length) return r;
   }
   return [];
@@ -1076,7 +1080,7 @@ function harpaParsePaginas(paginas) {
   }).filter((h) => h.letra);
 }
 
-function HarpaHinos({ hinos, saveHinos, adminMode }) {
+function HarpaHinos({ hinos, saveHinos, adminMode, onIrPara }) {
   const [busca, setBusca] = useState("");
   const [aberto, setAberto] = useState(null); // número do hino aberto
   const [edit, setEdit] = useState(null); // { numero, titulo, letra } em edição
@@ -1086,6 +1090,39 @@ function HarpaHinos({ hinos, saveHinos, adminMode }) {
   const [fonte, setFonte] = useState(17);
   const [pdfHinos, setPdfHinos] = useState(null);
   const [pdfEstado, setPdfEstado] = useState("");
+  useIdioma();
+  const [flipAberto, setFlipAberto] = useState(false);
+  const [palavraAtiva, setPalavraAtiva] = useState(null); // { p, rect }
+  const [imersao, setImersao] = useState(null);
+  const [correcao, setCorrecao] = useState(null); // prévia da correção de grafia
+  const [temBackup, setTemBackup] = useState(() => { try { return !!localStorage.getItem("biblia:harpa-backup"); } catch (e) { return false; } });
+  const abrirPalavra = (p, rect) => setPalavraAtiva({ p, rect });
+
+  const prepararCorrecao = () => {
+    let alterados = 0; const soma = new Map();
+    const novos = hinos.map((h) => {
+      const a = corrigirGrafia(h.titulo), b = corrigirGrafia(h.letra);
+      const mud = [...a.mudancas, ...b.mudancas];
+      if (a.texto !== h.titulo || b.texto !== h.letra) alterados += 1;
+      mud.forEach((m) => { const k = m.de + "→" + m.para; soma.set(k, (soma.get(k) || 0) + m.n); });
+      return { ...h, titulo: a.texto, letra: b.texto };
+    });
+    const resumo = [...soma.entries()].sort((x, y) => y[1] - x[1]).slice(0, 14).map(([k, n]) => `${k} (${n})`);
+    setCorrecao({ novos, alterados, resumo });
+  };
+  const aplicarCorrecao = () => {
+    if (!correcao) return;
+    try { localStorage.setItem("biblia:harpa-backup", JSON.stringify(hinos)); setTemBackup(true); } catch (e) { /* sem espaço: segue sem desfazer */ }
+    saveHinos(correcao.novos);
+    setAviso(`Correção aplicada em ${correcao.alterados} hino(s). Dá para desfazer.`);
+    setCorrecao(null);
+  };
+  const desfazerCorrecao = () => {
+    try {
+      const b = JSON.parse(localStorage.getItem("biblia:harpa-backup") || "null");
+      if (Array.isArray(b) && b.length) { saveHinos(b); localStorage.removeItem("biblia:harpa-backup"); setTemBackup(false); setAviso("Correção desfeita: os hinos voltaram ao que eram antes."); }
+    } catch (e) { setAviso("Não consegui desfazer."); }
+  };
 
   const ordenados = useMemo(() => [...hinos].sort((a, b) => a.numero - b.numero), [hinos]);
   const q = semAcento(busca).trim();
@@ -1153,27 +1190,56 @@ function HarpaHinos({ hinos, saveHinos, adminMode }) {
     }
   };
 
+  const baloes = (
+    <>
+      {palavraAtiva && <PalavraBalao palavra={palavraAtiva.p} ancora={palavraAtiva.rect} aoFechar={() => setPalavraAtiva(null)} aoImersao={(p) => { setPalavraAtiva(null); setImersao(p); }} />}
+      {imersao && <ImersaoPalavra palavra={imersao} aoVoltar={() => setImersao(null)} aoIrPara={(ab, c, v) => { setImersao(null); setFlipAberto(false); if (onIrPara) onIrPara(ab, c, v); }} />}
+    </>
+  );
+
   if (hino) {
+    const { estrofes, credito } = dividirEstrofes(hino.letra);
+    let nEstrofe = 0;
     return (
+      <div className="hino-fundo">
       <div className="max-w-3xl mx-auto px-4 sm:px-6 py-8">
         <BackButton onClick={() => setAberto(null)} label="Voltar aos hinos" />
-        <p className="text-xs font-mono uppercase tracking-[0.2em]" style={{ color: C.gold }}>Harpa Cristã · Hino {hino.numero}</p>
-        <h2 className="font-display text-3xl font-bold mt-1" style={{ fontFamily: "'Playfair Display', serif", color: C.ink }}>{hino.titulo}</h2>
-        <div className="flex flex-wrap gap-2 mt-4">
-          <Btn variant="ghost" onClick={() => setFonte((f) => Math.max(13, f - 2))}>A−</Btn>
-          <Btn variant="ghost" onClick={() => setFonte((f) => Math.min(30, f + 2))}>A+</Btn>
-          <Btn variant="ghost" onClick={() => copiar(hino)}><Link2 size={14} /> Copiar texto</Btn>
-          {adminMode && <Btn variant="ghost" onClick={() => setEdit({ ...hino })}>Editar</Btn>}
-          {adminMode && <Btn variant="ghost" color="#B03428" onClick={() => excluir(hino.numero)}><Trash2 size={14} /> Excluir</Btn>}
+        <div className="hino-papel rounded-2xl px-5 sm:px-9 py-7 mt-3" data-testid="hino-papel">
+          <p className="text-xs font-mono uppercase tracking-[0.2em]" style={{ color: "#8a6a1f" }}>Harpa Cristã · Hino {hino.numero}</p>
+          <h2 className="font-display text-3xl font-bold mt-1" style={{ fontFamily: "'Playfair Display', serif", color: "#2B2216" }}>{hino.titulo}</h2>
+          {credito && <p className="text-xs mt-1 italic" style={{ color: "#6b5a3a" }} data-testid="hino-credito">{credito}</p>}
+          <div className="flex flex-wrap gap-2 mt-4">
+            <Btn onClick={() => setFlipAberto(true)} data-testid="hino-abrir-flip"><BookOpen size={14} /> Ler como livro</Btn>
+            <Btn variant="ghost" onClick={() => setFonte((f) => Math.max(13, f - 2))}>A−</Btn>
+            <Btn variant="ghost" onClick={() => setFonte((f) => Math.min(30, f + 2))}>A+</Btn>
+            <Btn variant="ghost" onClick={() => copiar(hino)}><Link2 size={14} /> Copiar texto</Btn>
+            {adminMode && <Btn variant="ghost" onClick={() => setEdit({ ...hino })}>Editar</Btn>}
+            {adminMode && <Btn variant="ghost" color="#B03428" onClick={() => excluir(hino.numero)}><Trash2 size={14} /> Excluir</Btn>}
+          </div>
+          <p className="text-[11px] mt-3" style={{ color: "#8a6a1f" }}>Toque numa palavra sublinhada para ver o significado.</p>
+          <div className="mt-4" style={{ fontFamily: "'Playfair Display', serif", fontSize: fonte, lineHeight: 1.75, color: "#2B2216" }}>
+            {estrofes.map((e, k) => {
+              if (!e.refrao) nEstrofe += 1;
+              return (
+                <div key={k} className="mb-5" style={e.refrao ? { borderLeft: "3px solid #CBA135", paddingLeft: 14, fontStyle: "italic" } : {}}>
+                  <p className="text-[10.5px] font-mono tracking-[0.25em] mb-1" style={{ color: "#8a6a1f", fontStyle: "normal" }}>{e.refrao ? "REFRÃO" : `ESTROFE ${nEstrofe}`}</p>
+                  {e.linhas.map((l, j) => <div key={j}><TextoComPalavras texto={l} chave={`h${k}-${j}`} aoPalavra={abrirPalavra} ativo /></div>)}
+                </div>
+              );
+            })}
+          </div>
         </div>
-        <div className="mt-6 whitespace-pre-line" style={{ fontFamily: "'Playfair Display', serif", fontSize: fonte, lineHeight: 1.8, color: "#241F30" }}>{hino.letra}</div>
         {aviso && <p className="text-xs mt-4" style={{ color: C.goldDeep }}>{aviso}</p>}
         {adminMode && edit && <HinoForm edit={edit} setEdit={setEdit} onSave={salvarUm} aviso={aviso} />}
+      </div>
+      {flipAberto && <HinoFlip hino={hino} aoSair={() => setFlipAberto(false)} aoPalavra={abrirPalavra} />}
+      {baloes}
       </div>
     );
   }
 
   return (
+    <div className="hino-fundo">
     <div className="max-w-3xl mx-auto px-4 sm:px-6 py-8">
       <div className="flex items-center gap-2">
         <Search size={16} color={C.stone} />
@@ -1237,9 +1303,25 @@ function HarpaHinos({ hinos, saveHinos, adminMode }) {
             </p>
           )}
           <div className="mt-2"><Btn onClick={importar} disabled={!previaLote.length} className="disabled:opacity-50">Importar {previaLote.length ? `${previaLote.length} hinos` : "hinos"}</Btn></div>
+          <p className="text-xs font-semibold mt-5 mb-1" style={{ color: C.ink }}>Corrigir acentos e grafia dos hinos</p>
+          <p className="text-[11px] mb-2 leading-snug" style={{ color: C.stone }}>Confere todos os hinos cadastrados (nao → não, ceu → céu, coracao → coração, gloria → glória…) e arruma espaços e pontuação. Você vê o resumo antes de aplicar e pode desfazer depois. Nada sai do seu aparelho.</p>
+          <div className="flex flex-wrap items-center gap-2">
+            <Btn variant="ghost" onClick={prepararCorrecao} disabled={!hinos.length}>Conferir os hinos</Btn>
+            {temBackup && <Btn variant="ghost" color="#B03428" onClick={desfazerCorrecao}>Desfazer a última correção</Btn>}
+          </div>
+          {correcao && (
+            <div className="mt-2 rounded-lg p-3 text-xs leading-relaxed" style={{ background: "#fff", border: `1px solid ${C.gold}55`, color: "#3A3447" }} data-testid="previa-correcao">
+              {correcao.alterados === 0 ? "Nenhum hino precisa de correção." : (<><b>{correcao.alterados}</b> hino(s) serão corrigidos. Principais trocas: {correcao.resumo.join(", ") || "só espaços e pontuação"}.</>)}
+              <div className="mt-2 flex gap-2">
+                {correcao.alterados > 0 && <Btn onClick={aplicarCorrecao}>Aplicar a correção</Btn>}
+                <Btn variant="ghost" color={C.stone} onClick={() => setCorrecao(null)}>Fechar</Btn>
+              </div>
+            </div>
+          )}
           {aviso && <p className="text-xs mt-3" style={{ color: C.goldDeep }}>{aviso}</p>}
         </div>
       )}
+    </div>
     </div>
   );
 }
@@ -1261,7 +1343,7 @@ function HinoForm({ edit, setEdit, onSave, aviso }) {
   );
 }
 
-function HarpaCristaPage({ onBack, adminMode, hinos, saveHinos }) {
+function HarpaCristaPage({ onBack, adminMode, hinos, saveHinos, onIrPara }) {
   const [aba, setAba] = useState("historia");
   return (
     <div>
@@ -1295,7 +1377,7 @@ function HarpaCristaPage({ onBack, adminMode, hinos, saveHinos }) {
       </div>
 
       {aba === "hinos" ? (
-        <HarpaHinos hinos={hinos} saveHinos={saveHinos} adminMode={adminMode} />
+        <HarpaHinos hinos={hinos} saveHinos={saveHinos} adminMode={adminMode} onIrPara={onIrPara} />
       ) : (
       <div className="max-w-3xl mx-auto px-4 sm:px-6 py-10">
         <Eyebrow>Como tudo começou</Eyebrow>
@@ -2822,7 +2904,7 @@ export default function App() {
       )}
       {page === "anotacoes" && envolver(<AnotacoesPage onBack={() => setPage("home")} />)}
       {page === "sermoes" && adminMode && envolver(<SermoesPage onBack={() => setPage("home")} />)}
-      {page === "harpa" && envolver(<HarpaCristaPage onBack={() => setPage("home")} adminMode={adminMode} hinos={hinos} saveHinos={saveHinos} />)}
+      {page === "harpa" && envolver(<HarpaCristaPage onBack={() => setPage("home")} adminMode={adminMode} hinos={hinos} saveHinos={saveHinos} onIrPara={(ab, c, v) => { const b = findBook(ab); if (b) abrirLivro(b, c, "ler", v ? { v1: v, v2: v } : null); }} />)}
 
       {page === "musica" && adminMode && envolver(<MusicaAdmin config={musicaConfig} save={saveMusicaConfig} />)}
 

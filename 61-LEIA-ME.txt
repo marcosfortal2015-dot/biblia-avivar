@@ -1,0 +1,21 @@
+BÍBLIA AVIVAR - HARPA CRISTÃ (zip 61)
+
+Suba as pastas para o GitHub do biblia-avivar mantendo os caminhos (src/...). O Vercel refaz o site sozinho.
+
+O QUE MUDOU
+1. Papel claro: a aba Hinos e a leitura do hino agora ficam sobre papel de pergaminho claro.
+2. Significado das palavras: palavras como excelso, trasladado, ceifeiro, labor, remido, véu, clarim, refulgente, entronizado e carreira aparecem sublinhadas. Tocando, abre o significado, como falar e de onde vem (e "Aprender mais").
+3. Modo livro (flip) do hino: botão "Ler como livro". Capa, uma estrofe por página, refrão destacado, virar a página, música suave de fundo, "Cantar junto" (a linha acende no ritmo Devagar/Normal/Rápido e a página vira sozinha; tocar numa linha recomeça dali).
+4. Linha "Composição: ..." aparece como crédito do hino.
+5. Novo formato de importação: "Título - 545" (título, hífen e número na mesma linha, texto embaixo). O "Detectar sozinho" já reconhece.
+6. Corrigir acentos e grafia: no painel de administração do hinário, botão "Conferir os hinos". Mostra um resumo, você aplica, e pode "Desfazer a última correção".
+
+IMPORTANTE - OS TEXTOS DOS HINOS
+Eu não digito, não insiro e não corrijo letras de hinos eu mesmo. Por isso os hinos 545, 547 e 525 precisam ser colados por você:
+  Entre como administrador > Harpa Cristã > aba Hinos > "Importar vários de uma vez (texto)".
+  Cole os três hinos na caixa (do jeito que você me enviou, com "Título - número" e "Composição: ..."), confira a contagem e toque em Importar.
+  Depois toque em "Conferir os hinos" > "Aplicar a correção" para arrumar acentos dos hinos antigos e dos novos.
+A correção automática troca só palavras seguras (nao, ceu, coracao, gloria...). Dê uma olhada final nos hinos; palavras ambíguas (como "esta/está") ficam como estão.
+
+ARQUIVOS
+src/App.jsx, src/HinoFlip.jsx (novo), src/LivroFlip.jsx, src/index.css, src/lib/hinos.js (novo), src/lib/palavras.js
