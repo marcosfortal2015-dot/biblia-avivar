@@ -1,0 +1,28 @@
+ZIP 64 — Bíblia Avivar: WhatsApp do Ministério (repositório biblia-avivar)
+
+ANTES: se ainda não subiu o zip 62 (contas/sermões/versão) e o 63 (site, pasta api/), suba-os primeiro.
+Este zip 64 SUBSTITUI App.jsx, Conta.jsx e AvisoNovaVersao.jsx do 62 — não precisa mexer no resto.
+
+SUBIR (mantendo as pastas):
+  src/App.jsx
+  src/Conta.jsx
+  src/Whatsapp.jsx        (novo)
+  src/AvisoNovaVersao.jsx
+  src/lib/whatsapp.js     (novo)
+
+O QUE MUDOU
+1) Número do Ministério cadastrado: (85) 99207-1505 (o mesmo do botão do site). Fica em src/lib/whatsapp.js.
+   Para trocar sem mexer no código: menu > Acessos e usuários > "WhatsApp do Ministério" > Salvar.
+2) Botão verde do WhatsApp flutuante em todas as telas (some só no modo leitura em tela cheia).
+   Ao tocar, a pessoa escolhe o assunto — dúvida, pedido de oração, acesso aos sermões, problema no app —
+   e o WhatsApp abre direto com o Ministério, com mensagem pronta (já leva o nome e e-mail se a pessoa tem conta).
+3) Item "Falar no WhatsApp" no menu lateral.
+4) "Pedido enviado" agora explica que a senha é enviada pessoalmente pelo administrador (não é automático)
+   e o botão "Avisar o administrador pelo WhatsApp" aparece sempre.
+5) Preparado para virar agente: todo botão de WhatsApp passa por UM só lugar (src/lib/whatsapp.js > abrirConversa).
+   Cada mensagem leva uma etiqueta (#duvida, #oracao, #sermoes, #suporte) que o agente usará para direcionar.
+   Quando o app for convertido, liga-se o agente (WhatsApp Business API) mudando só esse arquivo
+   (AGENTE.ativo / endpoint) — nenhuma tela precisa ser refeita.
+
+IMPORTANTE: hoje o app NÃO envia mensagem sozinho. Quem toca no botão abre o WhatsApp dela e envia para você.
+Você responde no seu WhatsApp. O envio automático exige o WhatsApp Business API (projeto à parte, com custo).

@@ -13,6 +13,8 @@ import { BOOK_HISTORY } from "./lib/bookHistory.js";
 import HinoFlip from "./HinoFlip.jsx";
 import { PaginaConta, AcessoSermoes, PortaoCadastro, PainelAcessos } from "./Conta.jsx";
 import * as CT from "./lib/conta.js";
+import { BotaoWhatsapp, IconeWhats } from "./Whatsapp.jsx";
+import { WHATSAPP_MINISTERIO, abrirConversa } from "./lib/whatsapp.js";
 import { BUILD_ID, useVersao } from "./lib/versao.js";
 import { dividirEstrofes, corrigirGrafia, lerTituloNumero } from "./lib/hinos.js";
 import LivroFlip from "./LivroFlip.jsx";
@@ -2772,7 +2774,7 @@ export default function App() {
   const fecharBalao = () => { setBalao(false); try { localStorage.setItem("biblia:balao-visto", BUILD_ID); } catch (e) { /* ok */ } };
   const versao = useVersao();
   const conta = CT.useConta();
-  const [config, setConfig] = useState({ exigirCadastro: false, whatsappAdmin: "" });
+  const [config, setConfig] = useState({ exigirCadastro: false, whatsappAdmin: WHATSAPP_MINISTERIO });
   const [pendentes, setPendentes] = useState(0);
   const { instalado, instalarAgora } = useInstalar();
   const [loading, setLoading] = useState(true);
@@ -2796,7 +2798,7 @@ export default function App() {
     CT.iniciarConta();
     (async () => {
       const cfg = await withTimeout(loadKey("biblia:config-acesso", null), null);
-      if (cfg && typeof cfg === "object") setConfig((c0) => ({ ...c0, ...cfg }));
+      if (cfg && typeof cfg === "object") setConfig((c0) => ({ ...c0, ...cfg, whatsappAdmin: cfg.whatsappAdmin || c0.whatsappAdmin }));
       const storedStudies = await withTimeout(loadKey("biblia:studies", null), null);
       setStudies(storedStudies || SEED_STUDIES);
       setMusicaConfig(await withTimeout(loadKey("biblia:musicaconfig", DEFAULT_MUSICA), DEFAULT_MUSICA));
@@ -2843,6 +2845,7 @@ export default function App() {
     !instalado ? { k: "instalar", rotulo: "Instalar o app", sub: "Use como aplicativo no celular", icone: Download, onClick: () => { setMenuAberto(false); instalarAgora(); } } : null,
     { k: "conta", rotulo: conta.logado && conta.perfil ? conta.perfil.nome : "Entrar / Criar conta", sub: conta.logado ? "Minha conta e senha" : "Cadastro com e-mail e WhatsApp", icone: User, onClick: () => ir("conta") },
     { k: "sermoes", rotulo: t("nav.sermoes", "Sermões"), sub: adminMode ? undefined : "Área reservada: peça a senha de acesso", icone: FileText, onClick: () => ir("sermoes") },
+    { k: "whatsapp", rotulo: "Falar no WhatsApp", sub: "Atendimento direto do Ministério", icone: IconeWhats, onClick: () => { setMenuAberto(false); abrirConversa(config, "duvida", { nome: conta.perfil && conta.perfil.nome, email: conta.perfil && conta.perfil.email }); } },
     adminMode ? { k: "acessos", rotulo: "Acessos e usuários", sub: pendentes ? `${pendentes} pedido(s) de acesso` : "Pedidos, códigos e planos", icone: Users, onClick: () => ir("acessos") } : null,
     adminMode ? { k: "musica", rotulo: "Música de fundo", icone: SlidersHorizontal, onClick: () => ir("musica") } : null,
     { k: "admin", rotulo: adminMode ? "Sair do modo admin" : "Entrar como admin", icone: adminMode ? ShieldCheck : Lock, onClick: () => { setMenuAberto(false); if (adminMode) { privateLogout(); setAdminMode(false); } else setGateOpen(true); } },
@@ -2934,6 +2937,7 @@ export default function App() {
           onIrPara={(ab, c, v) => { const b = findBook(ab); if (b) abrirLivro(b, c, "ler", v ? { v1: v, v2: v } : null); }} />
       )}
       {page === "anotacoes" && envolver(<AnotacoesPage onBack={() => setPage("home")} />)}
+      {!lendo && <BotaoWhatsapp config={config} ctx={{ nome: conta.perfil && conta.perfil.nome, email: conta.perfil && conta.perfil.email }} />}
       {page === "conta" && <PaginaConta onBack={() => setPage("home")} onSermoes={() => ir("sermoes")} />}
       {page === "sermoes" && (adminMode
         ? envolver(<SermoesPage onBack={() => setPage("home")} />)

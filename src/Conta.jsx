@@ -7,6 +7,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { ArrowLeft, User, LogOut, ShieldCheck, Lock, MessageCircle, Copy, Check, Key, Users, RefreshCw, Trash2, Loader2, FileText } from "lucide-react";
 import * as CT from "./lib/conta.js";
+import { numeroWhats } from "./lib/whatsapp.js";
 
 const OURO = "#E9C765";
 const OURO2 = "#CBA135";
@@ -179,8 +180,8 @@ export function AcessoSermoes({ onBack, whatsappAdmin, children }) {
         {st === "solicitado" && (
           <div style={{ marginTop: 16, padding: "12px 14px", borderRadius: 12, background: "#ffffff12", border: "1px solid #CBA13555" }} data-testid="pedido-enviado">
             <p style={{ margin: 0, fontWeight: 800, color: OURO }}>Pedido enviado!</p>
-            <p style={{ margin: "6px 0 0", fontSize: 14, lineHeight: 1.45 }}>O administrador vai gerar sua senha e enviar pelo WhatsApp {zapBonito(p.whatsapp)}. Quando chegar, digite abaixo.</p>
-            {whatsappAdmin && <a href={CT.linkZap(whatsappAdmin, textoAviso)} target="_blank" rel="noreferrer" style={{ ...botaoFantasma, marginTop: 10, textDecoration: "none" }} data-testid="avisar-admin"><MessageCircle size={16} /> Avisar o administrador pelo WhatsApp</a>}
+            <p style={{ margin: "6px 0 0", fontSize: 14, lineHeight: 1.45 }}>O administrador vai analisar o pedido e enviar a sua senha de forma pessoal, pelo WhatsApp {zapBonito(p.whatsapp)}. Não é automático: para agilizar, toque no botão verde abaixo e avise o Ministério. Quando a senha chegar, digite abaixo.</p>
+            {<a href={CT.linkZap(numeroWhats({ whatsappAdmin }), textoAviso)} target="_blank" rel="noreferrer" style={{ ...botaoFantasma, marginTop: 10, textDecoration: "none" }} data-testid="avisar-admin"><MessageCircle size={16} /> Avisar o administrador pelo WhatsApp</a>}
           </div>
         )}
         {(st === "liberado" || st === "solicitado") && (
@@ -227,7 +228,7 @@ export function PainelAcessos({ onBack, config, saveConfig, aoContar }) {
   const [copiado, setCopiado] = useState(false);
   const [ocupado, setOcupado] = useState("");
   const [edit, setEdit] = useState(null);
-  const [zapAdm, setZapAdm] = useState(config.whatsappAdmin || "");
+  const [zapAdm, setZapAdm] = useState(maskZap(numeroWhats(config)));
   const carregar = useCallback(async () => {
     const r = await CT.admListar();
     if (r.ok) { setLista(r.contas); setErro(""); if (aoContar) aoContar(r.pendentes); } else setErro(r.motivo === "sem_sessao" ? "Sua sessão de administrador terminou. Entre de novo como administrador." : CT.textoMotivo(r.motivo));
@@ -253,7 +254,7 @@ export function PainelAcessos({ onBack, config, saveConfig, aoContar }) {
       <div style={{ ...cartao, marginBottom: 14 }} data-testid="acessos-config">
         <Caixa marcado={!!config.exigirCadastro} aoMudar={(v) => saveConfig({ ...config, exigirCadastro: v })} testid="cfg-exigir">Exigir cadastro (e-mail e senha) para usar o app</Caixa>
         <p style={{ margin: "4px 0 0 30px", fontSize: 12.5, color: LILAS, lineHeight: 1.4 }}>Desligado: qualquer pessoa lê a Bíblia sem conta (a conta é opcional). Ligado: o app só abre para quem entrar ou se cadastrar.</p>
-        <Rotulo>Seu WhatsApp (para quem pede o acesso poder avisar você)</Rotulo>
+        <Rotulo>WhatsApp do Ministério (botão verde do app e aviso de pedidos)</Rotulo>
         <div style={{ display: "flex", gap: 8 }}>
           <input value={zapAdm} onChange={(e) => setZapAdm(maskZap(e.target.value))} style={campo} placeholder="(85) 99999-0000" data-testid="cfg-zap" />
           <button onClick={() => saveConfig({ ...config, whatsappAdmin: zapAdm.replace(/\D/g, "") ? "55" + zapAdm.replace(/\D/g, "").replace(/^55(?=\d{10,11}$)/, "") : "" })} style={botaoOuro} data-testid="cfg-zap-salvar">Salvar</button>
