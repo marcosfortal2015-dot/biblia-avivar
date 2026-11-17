@@ -1,0 +1,13 @@
+ZIP 65 — Correção da IA "respondeu fora do formato" (repositório avivardoespirito, pasta api/)
+
+SUBIR: api/ia.js  (substitui o ia.js atual, o do zip 63). Só esse arquivo. Depois do upload a Vercel publica sozinha.
+
+CAUSA: o pedido de "Sugerir temas" tinha limite de 1800 tokens. Em português, 5 temas com versículos passam disso,
+a resposta da IA era cortada no meio e o app não conseguia ler.
+
+O QUE MUDOU
+1) Mais espaço de resposta: temas 4000, sermão completo 8000 (os outros também aumentaram).
+2) Se mesmo assim vier cortada, o servidor aproveita o que veio completo (os temas inteiros) em vez de descartar tudo.
+3) Se a resposta vier torta, tenta mais uma vez automaticamente antes de mostrar erro.
+4) Tempo máximo da função subiu para 60 s (sermão completo demora mais que 10 s).
+5) Se ainda falhar, o servidor registra o motivo da parada (campo "parada") para diagnóstico.
