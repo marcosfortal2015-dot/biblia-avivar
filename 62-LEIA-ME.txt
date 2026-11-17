@@ -1,0 +1,27 @@
+BÍBLIA AVIVAR - CONTAS, SENHA DOS SERMÕES, ATUALIZAÇÃO E TELA GRANDE (zip 62)
+
+Suba o zip 63 (servidor) ANTES deste. Aqui, mantenha as pastas (src/..., public/..., vite.config.js na raiz).
+
+1. CADASTRO DE USUÁRIO
+   Menu > "Entrar / Criar conta": nome, e-mail, WhatsApp e senha. Caixa "Manter conectado neste aparelho".
+   Essa conta vale para o app inteiro. No painel do administrador há a chave "Exigir cadastro para usar o app":
+   - desligada (como está hoje): qualquer pessoa continua lendo sem conta; a conta é opcional;
+   - ligada: o app só abre depois de entrar ou criar conta (o administrador entra pelo link "Sou administrador").
+
+2. SERMÕES COM SENHA DE ACESSO
+   Menu > Sermões: quem não tem acesso vê "Solicitar senha de acesso". O pedido chega ao administrador.
+   Administrador: Menu > "Acessos e usuários" > aba Pedidos > "Gerar código e liberar" (escolhe o prazo) >
+   "Enviar pelo WhatsApp" (abre a conversa com a pessoa, mensagem pronta com o código).
+   A pessoa digita o código e, se quiser, marca "Manter liberado neste aparelho". Cada pessoa tem os próprios sermões.
+   Também há: bloquear, gerar novo código, plano e validade, senha temporária (esqueci a senha) e excluir conta.
+   No painel, salve o seu WhatsApp: quem pede o acesso ganha um botão para avisar você.
+
+3. ATUALIZAÇÃO
+   O balão "Clique no menu e em Atualizar" e o aviso "Nova versão" só aparecem quando o app realmente não está atualizado,
+   e uma vez por versão. No menu fica sempre o botão de Atualizar (e "Atualizar agora" quando há versão nova).
+
+4. TELA GRANDE
+   Menu, lupa e anotações agora ficam na altura da coluna de leitura, e não mais nos cantos da tela.
+
+Arquivos: vite.config.js, public/sw.js, src/App.jsx, src/Visual.jsx, src/Sermoes.jsx, src/Conta.jsx,
+src/AvisoNovaVersao.jsx, src/lib/conta.js, src/lib/versao.js, src/lib/ia.js

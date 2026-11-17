@@ -4,13 +4,16 @@ import {
   BookOpen, Search, Image as ImageIcon, Loader2, AlertCircle,
   Highlighter, Eraser, SkipBack, SkipForward, Share2, Download, Music, Play, Pause, StickyNote, Trash2, Plus, Volume2, Square,
   GraduationCap, CalendarDays, HandHeart, ExternalLink,
-  Sparkles, WifiOff, CheckCircle2, VolumeX, Link2, Smartphone, MessageCircle, FileText, Copy, SlidersHorizontal, Home as Home_,
+  Sparkles, WifiOff, CheckCircle2, VolumeX, Link2, Smartphone, MessageCircle, FileText, Copy, SlidersHorizontal, Home as Home_, User, Users,
 } from "lucide-react";
 import { storageGet, storageSet, privateLogin, privateLogout } from "./lib/storage.js";
 import { OLD_TESTAMENT, NEW_TESTAMENT, ALL_BOOKS, findBook } from "./lib/bibleData.js";
 import { SEED_STUDIES } from "./lib/seedStudies.js";
 import { BOOK_HISTORY } from "./lib/bookHistory.js";
 import HinoFlip from "./HinoFlip.jsx";
+import { PaginaConta, AcessoSermoes, PortaoCadastro, PainelAcessos } from "./Conta.jsx";
+import * as CT from "./lib/conta.js";
+import { BUILD_ID, useVersao } from "./lib/versao.js";
 import { dividirEstrofes, corrigirGrafia, lerTituloNumero } from "./lib/hinos.js";
 import LivroFlip from "./LivroFlip.jsx";
 import * as BIB from "./lib/biblia.js";
@@ -688,12 +691,17 @@ function IntroBoasVindas({ onEnter }) {
 /* ---------------------------------------------------------------- */
 const OFFLINE_CACHE = "biblia-avivar-offline-v1";
 const OFFLINE_FLAG = "biblia:offlinePronto";
+const OFFLINE_VER = "biblia:offlineVersao";
 function loadOfflineFlag() {
   try {
     return localStorage.getItem(OFFLINE_FLAG);
   } catch (e) {
     return null;
   }
+}
+// "Atualizado" = baixou para uso sem internet E isso foi feito com a versão do app que está rodando agora.
+function offlineAtual() {
+  try { return !!localStorage.getItem(OFFLINE_FLAG) && localStorage.getItem(OFFLINE_VER) === BUILD_ID; } catch (e) { return false; }
 }
 async function prepararOffline() {
   if (!("caches" in window)) throw new Error("Este navegador não permite uso offline.");
@@ -720,6 +728,7 @@ async function prepararOffline() {
   if (!(await cache.match(STATIC_BIBLE_URL))) throw new Error("A Bíblia não foi guardada. Tente de novo com internet melhor.");
   try {
     localStorage.setItem(OFFLINE_FLAG, new Date().toISOString());
+    localStorage.setItem(OFFLINE_VER, BUILD_ID);
   } catch (e) {}
   return ok;
 }
@@ -874,7 +883,7 @@ function InstalarBanner() {
 
 // Baixa a Bíblia para o aparelho (uso sem internet). Usado pelo menu e pelo balão da abertura.
 function useAtualizar() {
-  const [estado, setEstado] = useState(loadOfflineFlag() ? "pronto" : "ocioso");
+  const [estado, setEstado] = useState(offlineAtual() ? "pronto" : "ocioso");
   const [data, setData] = useState(loadOfflineFlag());
   const [erro, setErro] = useState("");
   const baixar = async () => {
@@ -2758,7 +2767,13 @@ export default function App() {
   const [lendo, setLendo] = useState(false);
   const [sinalBusca, setSinalBusca] = useState(0);
   const atualizar = useAtualizar();
-  const [balao, setBalao] = useState(true);
+  // O balão "Atualizar" só abre quando o app NÃO está atualizado (nunca baixou, ou veio versão nova) e uma vez por versão.
+  const [balao, setBalao] = useState(() => { try { return localStorage.getItem("biblia:balao-visto") !== BUILD_ID && !offlineAtual(); } catch (e) { return false; } });
+  const fecharBalao = () => { setBalao(false); try { localStorage.setItem("biblia:balao-visto", BUILD_ID); } catch (e) { /* ok */ } };
+  const versao = useVersao();
+  const conta = CT.useConta();
+  const [config, setConfig] = useState({ exigirCadastro: false, whatsappAdmin: "" });
+  const [pendentes, setPendentes] = useState(0);
   const { instalado, instalarAgora } = useInstalar();
   const [loading, setLoading] = useState(true);
   const [adminMode, setAdminMode] = useState(false);
@@ -2778,7 +2793,10 @@ export default function App() {
   useEffect(() => {
     // sem internet o carregamento não pode travar: depois de 4s segue com o que tiver
     const withTimeout = (p, fallback) => Promise.race([p, new Promise((r) => setTimeout(() => r(fallback), 4000))]);
+    CT.iniciarConta();
     (async () => {
+      const cfg = await withTimeout(loadKey("biblia:config-acesso", null), null);
+      if (cfg && typeof cfg === "object") setConfig((c0) => ({ ...c0, ...cfg }));
       const storedStudies = await withTimeout(loadKey("biblia:studies", null), null);
       setStudies(storedStudies || SEED_STUDIES);
       setMusicaConfig(await withTimeout(loadKey("biblia:musicaconfig", DEFAULT_MUSICA), DEFAULT_MUSICA));
@@ -2815,7 +2833,7 @@ export default function App() {
   const ir = (p) => { setMenuAberto(false); setPage(p); try { window.scrollTo(0, 0); } catch (e) { /* ok */ } };
   const ultimo = loadUltimaLeituraLocal();
   const abaAtual = page === "home" ? "home" : page === "biblia" || page === "book" ? "biblia" : page === "planos" ? "planos" : page === "audio" ? "audio" : "mais";
-  const aoClicarAba = (k) => { if (k === "mais") { setBalao(false); setMenuAberto(true); } else ir(k); };
+  const aoClicarAba = (k) => { if (k === "mais") { fecharBalao(); setMenuAberto(true); } else ir(k); };
   const itensMenu = [
     { k: "home", rotulo: t("nav.inicio", "Início"), icone: Home_, onClick: () => ir("home") },
     { k: "biblia", rotulo: t("nav.biblia", "Bíblia"), icone: BookOpen, onClick: () => ir("biblia") },
@@ -2823,7 +2841,9 @@ export default function App() {
     { k: "harpa", rotulo: "Harpa Cristã", sub: "Hinário: história e letras", icone: Music, onClick: () => ir("harpa") },
     { k: "musica-app", rotulo: "Louvor Avivar do Espírito", sub: "Abre o app de louvor", icone: Music, onClick: () => { setMenuAberto(false); window.open("https://avivardoespirito.com.br/?app=music", "_blank", "noopener,noreferrer"); } },
     !instalado ? { k: "instalar", rotulo: "Instalar o app", sub: "Use como aplicativo no celular", icone: Download, onClick: () => { setMenuAberto(false); instalarAgora(); } } : null,
-    adminMode ? { k: "sermoes", rotulo: t("nav.sermoes", "Sermões"), icone: FileText, onClick: () => ir("sermoes") } : null,
+    { k: "conta", rotulo: conta.logado && conta.perfil ? conta.perfil.nome : "Entrar / Criar conta", sub: conta.logado ? "Minha conta e senha" : "Cadastro com e-mail e WhatsApp", icone: User, onClick: () => ir("conta") },
+    { k: "sermoes", rotulo: t("nav.sermoes", "Sermões"), sub: adminMode ? undefined : "Área reservada: peça a senha de acesso", icone: FileText, onClick: () => ir("sermoes") },
+    adminMode ? { k: "acessos", rotulo: "Acessos e usuários", sub: pendentes ? `${pendentes} pedido(s) de acesso` : "Pedidos, códigos e planos", icone: Users, onClick: () => ir("acessos") } : null,
     adminMode ? { k: "musica", rotulo: "Música de fundo", icone: SlidersHorizontal, onClick: () => ir("musica") } : null,
     { k: "admin", rotulo: adminMode ? "Sair do modo admin" : "Entrar como admin", icone: adminMode ? ShieldCheck : Lock, onClick: () => { setMenuAberto(false); if (adminMode) { privateLogout(); setAdminMode(false); } else setGateOpen(true); } },
   ];
@@ -2837,6 +2857,7 @@ export default function App() {
     });
   };
 
+  const saveConfig = (v) => { setConfig(v); saveKey("biblia:config-acesso", v); };
   const saveHinos = (lista) => {
     setHinos(lista);
     saveKey("biblia:harpa", lista);
@@ -2872,6 +2893,16 @@ export default function App() {
     );
   }
 
+  // O administrador pode exigir cadastro para usar o app (Menu > Acessos e usuários).
+  if (config.exigirCadastro && !conta.logado && !adminMode) {
+    return (
+      <>
+        <PortaoCadastro onAdmin={() => setGateOpen(true)} />
+        {gateOpen && <AdminGateModal onClose={() => setGateOpen(false)} onSuccess={() => { setAdminMode(true); setGateOpen(false); CT.admListar().then((r) => { if (r && r.ok) setPendentes(r.pendentes || 0); }); }} />}
+      </>
+    );
+  }
+
   return (
     <div className="min-h-screen font-body" style={{ background: V.fundo, color: "#fff", paddingBottom: lendo ? 0 : 72 }}>
       <style>{`
@@ -2882,9 +2913,9 @@ export default function App() {
       {intro && <IntroBoasVindas onEnter={fecharIntro} />}
       <InstalarModal />
 
-      <Cabecalho compacto={lendo} onMenu={() => { setBalao(false); setMenuAberto(true); }} onBusca={() => { ir("biblia"); setSinalBusca((n) => n + 1); }} onMarcadores={() => ir("anotacoes")} onHome={() => ir("home")} />
-      <MenuLateral aberto={menuAberto} onFechar={() => setMenuAberto(false)} itens={itensMenu} atualizar={atualizar} />
-      {balao && !menuAberto && !intro && <BalaoAtualizar estado={atualizar.estado} erro={atualizar.erro} baixar={atualizar.baixar} aoFechar={() => setBalao(false)} topo={lendo ? 54 : 112} />}
+      <Cabecalho compacto={lendo} onMenu={() => { fecharBalao(); setMenuAberto(true); }} onBusca={() => { ir("biblia"); setSinalBusca((n) => n + 1); }} onMarcadores={() => ir("anotacoes")} onHome={() => ir("home")} />
+      <MenuLateral aberto={menuAberto} onFechar={() => setMenuAberto(false)} itens={itensMenu} atualizar={atualizar} versao={versao} />
+      {balao && !menuAberto && !intro && <BalaoAtualizar estado={atualizar.estado} erro={atualizar.erro} baixar={atualizar.baixar} aoFechar={() => fecharBalao()} topo={lendo ? 54 : 112} />}
 
       {page === "home" && (
         <Home
@@ -2903,7 +2934,15 @@ export default function App() {
           onIrPara={(ab, c, v) => { const b = findBook(ab); if (b) abrirLivro(b, c, "ler", v ? { v1: v, v2: v } : null); }} />
       )}
       {page === "anotacoes" && envolver(<AnotacoesPage onBack={() => setPage("home")} />)}
-      {page === "sermoes" && adminMode && envolver(<SermoesPage onBack={() => setPage("home")} />)}
+      {page === "conta" && <PaginaConta onBack={() => setPage("home")} onSermoes={() => ir("sermoes")} />}
+      {page === "sermoes" && (adminMode
+        ? envolver(<SermoesPage onBack={() => setPage("home")} />)
+        : (
+          <AcessoSermoes onBack={() => setPage("home")} whatsappAdmin={config.whatsappAdmin}>
+            {envolver(<SermoesPage onBack={() => setPage("home")} carregarFn={CT.sermoesDoUsuarioGet} gravarFn={CT.sermoesDoUsuarioSet} selo="Área reservada" />)}
+          </AcessoSermoes>
+        ))}
+      {page === "acessos" && adminMode && <PainelAcessos onBack={() => setPage("home")} config={config} saveConfig={saveConfig} aoContar={setPendentes} />}
       {page === "harpa" && envolver(<HarpaCristaPage onBack={() => setPage("home")} adminMode={adminMode} hinos={hinos} saveHinos={saveHinos} onIrPara={(ab, c, v) => { const b = findBook(ab); if (b) abrirLivro(b, c, "ler", v ? { v1: v, v2: v } : null); }} />)}
 
       {page === "musica" && adminMode && envolver(<MusicaAdmin config={musicaConfig} save={saveMusicaConfig} />)}
@@ -2917,6 +2956,7 @@ export default function App() {
           onSuccess={() => {
             setAdminMode(true);
             setGateOpen(false);
+            CT.admListar().then((r) => { if (r && r.ok) setPendentes(r.pendentes || 0); });
           }}
         />
       )}

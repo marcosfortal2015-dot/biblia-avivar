@@ -53,10 +53,12 @@ export function Cabecalho({ onMenu, onBusca, onMarcadores, onHome, compacto }) {
   const icone = { color: V.ouro, filter: "drop-shadow(0 1px 3px #0009)" };
   if (compacto) {
     return (
-      <header className="flex items-center justify-between px-2 py-1.5" style={{ background: "linear-gradient(180deg, #1a0c40, #2c1670)", borderBottom: "1px solid #CBA13566" }}>
+      <header style={{ background: "linear-gradient(180deg, #1a0c40, #2c1670)", borderBottom: "1px solid #CBA13566" }}>
+        <div className="flex items-center justify-between px-2 py-1.5 max-w-3xl mx-auto w-full">
         <button onClick={onMenu} data-testid="abrir-menu" aria-label={t("menu.abrir", "Abrir o menu")} className="p-2 rounded-md focus:outline-none focus:ring-2"><Menu size={24} style={icone} /></button>
         <button onClick={onHome} aria-label="Bíblia Avivar — início" className="font-bold text-[20px] focus:outline-none" style={{ ...ouroTexto, fontFamily: serifa }}>Bíblia Avivar</button>
         <button onClick={onMarcadores} data-testid="abrir-anotacoes" aria-label={t("nav.anotacoesTitulo", "Minhas anotações")} className="p-2 rounded-md focus:outline-none focus:ring-2"><Bookmark size={22} style={icone} /></button>
+        </div>
       </header>
     );
   }
@@ -71,7 +73,7 @@ export function Cabecalho({ onMenu, onBusca, onMarcadores, onHome, compacto }) {
         <path d="M0 74V50l34-16 28 14 40-26 46 30 34-18 44 20 40-24 38 26 40-18 30 14 26-10v52z" fill="#4a2477" opacity=".9" />
         <path d="M0 74V58l46-16 40 18 50-22 52 24 46-16 48 20 44-14 38 12 36-8v38z" fill="#2c1556" />
       </svg>
-      <div className="relative z-10 flex items-start justify-between px-3 pt-3 pb-6">
+      <div className="relative z-10 flex items-start justify-between px-3 pt-3 pb-6 max-w-3xl mx-auto w-full" data-testid="cabecalho-miolo">
         <div className="w-[76px] flex justify-start">
           <button onClick={onMenu} data-testid="abrir-menu" aria-label={t("menu.abrir", "Abrir o menu")} className="p-2 -ml-1 rounded-md focus:outline-none focus:ring-2"><Menu size={30} style={icone} /></button>
         </div>
@@ -91,7 +93,7 @@ export function Cabecalho({ onMenu, onBusca, onMarcadores, onHome, compacto }) {
 /* ------------------------------------------------------------------ */
 /* Menu lateral (o "☰")                                                */
 /* ------------------------------------------------------------------ */
-export function MenuLateral({ aberto, onFechar, itens, atualizar }) {
+export function MenuLateral({ aberto, onFechar, itens, atualizar, versao }) {
   useIdioma();
   useEffect(() => {
     if (!aberto) return undefined;
@@ -119,6 +121,13 @@ export function MenuLateral({ aberto, onFechar, itens, atualizar }) {
             <button onClick={atualizar.baixar} disabled={atualizar.estado === "baixando"} data-testid="menu-atualizar" className="shrink-0 inline-flex items-center gap-1.5 rounded-full px-3.5 py-2 text-[13px] font-bold disabled:opacity-70 focus:outline-none focus:ring-2" style={{ background: "linear-gradient(180deg,#f6d77d,#c9952f)", color: "#2a1450" }}>
               {atualizar.estado === "baixando" ? <><Loader2 size={14} className="animate-spin" /> {t("atualizar.baixando", "Baixando…")}</> : <>{atualizar.estado === "pronto" ? <CheckCircle2 size={14} /> : <Download size={14} />} {t("atualizar.botao", "Atualizar")}</>}
             </button>
+          </div>
+        )}
+        {versao && versao.nova && (
+          <div className="mx-4 mt-3 rounded-xl p-3 flex items-center gap-3" data-testid="menu-nova-versao" style={{ background: "#f6d77d22", border: "1px solid #f6d77d" }}>
+            <Download size={20} color={V.ouro} className="shrink-0" />
+            <p className="flex-1 text-[14px] font-semibold leading-tight" style={{ color: "#fff" }}>{t("versao.nova", "Nova versão do app disponível")}</p>
+            <button onClick={versao.atualizarAgora} data-testid="menu-atualizar-app" className="shrink-0 inline-flex items-center gap-1.5 rounded-full px-3.5 py-2 text-[13px] font-bold focus:outline-none focus:ring-2" style={{ background: "linear-gradient(180deg,#f6d77d,#c99530)", color: "#1a0d42" }}>{t("versao.botao", "Atualizar agora")}</button>
           </div>
         )}
         {atualizar && atualizar.estado === "erro" && <p className="mx-4 mt-1.5 text-[11px]" style={{ color: "#ffb4a8" }}>{atualizar.erro}</p>}

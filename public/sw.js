@@ -1,7 +1,7 @@
 // v2 — guarda o app para uso sem internet.
 // "biblia-avivar-offline-*" é o cache preenchido pelo botão "Baixar para usar sem internet"
 // (Bíblia inteira + arquivos do app); nunca é apagado na atualização.
-const CACHE_NAME = "biblia-avivar-v2";
+const CACHE_NAME = "biblia-avivar-v3";
 const KEEP_PREFIX = "biblia-avivar-offline";
 const APP_SHELL = ["/", "/index.html", "/manifest.json", "/icon-192.png", "/icon-512.png", "/logo-icone.png"];
 
@@ -26,6 +26,8 @@ self.addEventListener("activate", (event) => {
 self.addEventListener("fetch", (event) => {
   const req = event.request;
   if (req.method !== "GET" || !req.url.startsWith("http")) return;
+  // o código da versão nunca vem do cache: senão o app acharia que há versão nova sem haver
+  if (new URL(req.url).pathname === "/versao.json") return;
   event.respondWith(
     fetch(req)
       .then((res) => {

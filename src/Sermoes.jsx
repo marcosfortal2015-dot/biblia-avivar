@@ -247,7 +247,9 @@ function Editor({ inicial, aoSalvar, aoCancelar, aoBaixar }) {
 }
 
 /* ------------------------- página principal ------------------------- */
-export default function SermoesPage({ onBack }) {
+// carregarFn/gravarFn: de onde vêm e para onde vão os sermões. Padrão: os sermões do ministério (só administrador).
+// Quem entrou com o código da área de sermões usa os próprios (guardados só para essa pessoa).
+export default function SermoesPage({ onBack, carregarFn, gravarFn, selo }) {
   useIdioma();
   const [lista, setLista] = useState(null);
   const [erroCarga, setErroCarga] = useState("");
@@ -259,14 +261,14 @@ export default function SermoesPage({ onBack }) {
 
   const carregar = async () => {
     setErroCarga(""); setLista(null);
-    const r = await privadoGet(CHAVE);
+    const r = await (carregarFn ? carregarFn() : privadoGet(CHAVE));
     if (r.ok) setLista(Array.isArray(r.value) ? r.value : []);
-    else setErroCarga(r.motivo === "sem_sessao" ? t("sermao.semSessao", "Entre como administrador para ver os sermões.") : t("sermao.falhaCarga", "Não consegui carregar os sermões. Nada foi apagado; tente de novo."));
+    else setErroCarga(r.motivo === "sem_sessao" ? t("sermao.semSessao", carregarFn ? "Entre na área de sermões para ver seus sermões." : "Entre como administrador para ver os sermões.") : t("sermao.falhaCarga", "Não consegui carregar os sermões. Nada foi apagado; tente de novo."));
   };
   useEffect(() => { carregar(); }, []);
 
   const gravar = async (nova) => {
-    const r = await privadoSet(CHAVE, nova);
+    const r = await (gravarFn ? gravarFn(nova) : privadoSet(CHAVE, nova));
     if (r.ok) { setLista(nova); setAviso(""); return true; }
     setAviso(t("sermao.falhaSalvar", "Não consegui salvar agora. Confira a conexão e tente de novo."));
     return false;
@@ -296,7 +298,7 @@ export default function SermoesPage({ onBack }) {
   return (
     <div className="max-w-3xl mx-auto px-4 sm:px-6 py-8" data-testid="pagina-sermoes">
       {Topo}
-      <p className="uppercase text-xs tracking-[0.2em] font-mono font-semibold" style={{ color: C.gold }}>{t("sermao.admin", "Somente administrador")}</p>
+      <p className="uppercase text-xs tracking-[0.2em] font-mono font-semibold" style={{ color: C.gold }}>{selo || t("sermao.admin", "Somente administrador")}</p>
       <h1 className="font-display text-3xl font-bold" style={{ color: C.ink, fontFamily: "'Playfair Display', serif" }}>{t("sermao.pagina", "Sermões")}</h1>
       <div className="flex flex-wrap gap-2 mt-4 mb-4">
         <Botao onClick={() => setTela("gerar")} disabled={!lista} testid="btn-novo-ia"><Sparkles size={15} /> {t("sermao.novoIA", "Novo sermão com ajuda da IA")}</Botao>
