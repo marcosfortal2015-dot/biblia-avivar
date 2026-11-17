@@ -223,7 +223,7 @@ export default function HinoFlip({ hino, aoSair, aoPalavra }) {
         <button onClick={anterior} disabled={!podeAnt || !!flip} data-testid="hflip-anterior" aria-label="Página anterior" style={{ position: "absolute", left: 2, top: "50%", transform: "translateY(-50%)", width: 36, height: 56, borderRadius: 10, border: "none", background: "#12082e88", color: OURO, cursor: "pointer", opacity: podeAnt ? 1 : 0, zIndex: 8 }}><ChevronLeft size={22} /></button>
         <button onClick={proxima} disabled={!podeProx || !!flip} data-testid="hflip-proxima" aria-label="Próxima página" style={{ position: "absolute", right: 2, top: "50%", transform: "translateY(-50%)", width: 36, height: 56, borderRadius: 10, border: "none", background: "#12082e88", color: OURO, cursor: "pointer", opacity: podeProx ? 1 : 0, zIndex: 8 }}><ChevronRight size={22} /></button>
       </div>
-      <div style={{ textAlign: "center", fontSize: 11.5, color: "#C9C2D8", padding: "4px 8px 8px", fontFamily: "monospace" }}>toque numa palavra sublinhada para ver o significado · toque numa linha para cantar dali</div>
+      <div style={{ textAlign: "center", fontSize: 11.5, color: "#C9C2D8", padding: "4px 8px 8px", fontFamily: "monospace" }}>toque numa palavra com traço vermelho para ver o significado · toque numa linha para cantar dali</div>
     </div>
   );
 }

@@ -203,7 +203,7 @@ export function TextoComPalavras({ texto, chave = "", aoPalavra, ativo = true })
         <span key={chave + i} role="button" tabIndex={0} data-testid="palavra-dificil" data-palavra={p.p.id}
           onClick={(e) => { e.stopPropagation(); aoPalavra(p.p, e.currentTarget.getBoundingClientRect()); }}
           onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); aoPalavra(p.p, e.currentTarget.getBoundingClientRect()); } }}
-          style={{ borderBottom: `2px dotted ${C.goldDeep}`, cursor: "help", background: "#CBA13522", borderRadius: 3, padding: "0 1px" }}>{p.t}</span>
+          style={{ borderBottom: "1.5px solid #D62828", cursor: "pointer", paddingBottom: 0 }}>{p.t}</span>
       ) : <React.Fragment key={chave + i}>{p.t}</React.Fragment>)}
     </>
   );

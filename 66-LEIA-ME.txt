@@ -1,0 +1,14 @@
+ZIP 66 — Bíblia Avivar: palavras interativas com traço vermelho (repositório biblia-avivar)
+
+SUBIR (mantendo as pastas): src/App.jsx  src/Leitor.jsx  src/HinoFlip.jsx
+Este zip já inclui tudo do zip 64 (WhatsApp) em App.jsx. Se ainda não subiu 62 e 63, suba-os antes.
+
+O QUE MUDOU
+- As palavras incomuns com significado (Bíblia, Harpa, livro de hinos) perdem o fundo dourado e o pontilhado.
+  Agora só ficam com um traço vermelho fino por baixo. Tocar na palavra continua abrindo o significado.
+- Os avisos "toque numa palavra sublinhada" passaram a dizer "palavra com traço vermelho".
+
+HINOS 525 A 640 (como colocar)
+Pelo app: Menu > Administrador > Harpa Cristã > Hinos > importar em lote.
+Cole o texto no formato "Título - número", por exemplo "VENCENDO VEM JESUS - 525", uma letra após a outra, e toque em
+"Conferir os hinos" (corrige a grafia e separa estrofes e refrão). Pode colar em blocos de 10 a 20 hinos por vez.

@@ -1227,7 +1227,7 @@ function HarpaHinos({ hinos, saveHinos, adminMode, onIrPara }) {
             {adminMode && <Btn variant="ghost" onClick={() => setEdit({ ...hino })}>Editar</Btn>}
             {adminMode && <Btn variant="ghost" color="#B03428" onClick={() => excluir(hino.numero)}><Trash2 size={14} /> Excluir</Btn>}
           </div>
-          <p className="text-[11px] mt-3" style={{ color: "#8a6a1f" }}>Toque numa palavra sublinhada para ver o significado.</p>
+          <p className="text-[11px] mt-3" style={{ color: "#8a6a1f" }}>Toque numa palavra com traço vermelho para ver o significado.</p>
           <div className="mt-4" style={{ fontFamily: "'Playfair Display', serif", fontSize: fonte, lineHeight: 1.75, color: "#2B2216" }}>
             {estrofes.map((e, k) => {
               if (!e.refrao) nEstrofe += 1;
